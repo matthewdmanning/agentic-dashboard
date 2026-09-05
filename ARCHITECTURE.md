@@ -13,7 +13,7 @@ The dashboard is not one fixed object or universal data model. Its structure, da
 - The frontend uses React, TypeScript, and Vite.
 - shadcn/ui is the framework the interface is built from; its components are the default and its own defaults are this project's defaults (D25).
 - Tailwind CSS is the theming framework.
-- Native HTML and CSS are used where they are sufficient.
+- The interface is authored by composing that library's primitives. Raw HTML elements and hand-written CSS are not an accepted substitute for a composition — no agent may submit them in place of one. What a browser finally renders is HTML either way; what is authored is not.
 - A small Node.js backend provides atomic JSON persistence, external-service integrations, external-access authentication, and MCP tools.
 - There is no database.
 
@@ -21,15 +21,15 @@ The dashboard is not one fixed object or universal data model. Its structure, da
 
 Seven modules:
 
-| Module           | Owns                                                                                                                                                                               |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `contract`       | Dashboard configuration shape and validation, mutation types, formatter compilation, card template schemas, role bundle shape. No React, no Node — imported by every other module. |
-| `service`        | The one interface. Role resolution and enforcement, persistence, applying mutations.                                                                                               |
-| `auth`           | Accounts, credentials, account-to-role resolution. Separate store from dashboard data.                                                                                             |
-| `integrations`   | Optional, user-authorized external-service connections, and backup targets.                                                                                                        |
-| `view`           | React application: rendering, Settings, offline cache, mutation queue, toast.                                                                                                      |
-| `card-templates` | Card template components, paired with their schemas from `contract`. Split out on change cadence: these are added by source change, not through the service.                       |
-| `mcp`            | Tool definitions. Calls `service`.                                                                                                                                                 |
+| Module           | Owns                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `contract`       | Dashboard configuration shape and validation, mutation types, card mapper compilation, card template schemas, role bundle shape. No React, no Node — imported by every other module. |
+| `service`        | The one interface. Role resolution and enforcement, persistence, applying mutations.                                                                                                 |
+| `auth`           | Accounts, credentials, account-to-role resolution. Separate store from dashboard data.                                                                                               |
+| `integrations`   | Optional, user-authorized external-service connections, and backup targets.                                                                                                          |
+| `view`           | React application: rendering, Settings, offline cache, mutation queue, toast.                                                                                                        |
+| `card-templates` | Card template components, paired with their schemas from `contract`. Split out on change cadence: adding one takes `cards: write`, held by `admin` (D37).                            |
+| `mcp`            | Tool definitions. Calls `service`.                                                                                                                                                   |
 
 Runtime dashboard data and installed themes live at a configurable path outside `src/`. Roles live in a file `contract` imports; per-user preferences live in each user's own `.env` files; secrets live in the credential store. None of the three is dashboard configuration.
 
@@ -47,9 +47,9 @@ The module map above is the target cut. The rewrite lands issue by issue, so par
 | `view`           | Not renamed; lives at `src/client/`; on `service`                                                                                         |
 | `card-templates` | Partly split out; the composition-tree codegen is at `src/card-templates/`, `CardView` and the template map remain at `src/client/cards/` |
 
-There are no card templates. The five that shipped were deleted (D32) and their shadcn replacements are not written, so `cardTemplateSchemas` is empty, the default configuration holds no card, the registry serves an empty index, and a running dashboard renders nothing. Their schemas were kept for tests at `src/test-support/card-template.ts`.
+**Zero card templates are wired in right now — a state of this rewrite, not a gap in the design.** The five that shipped were deleted (D32) and their shadcn replacements are not written, so `cardTemplateSchemas` is empty, the default configuration holds no card, the registry serves an empty index, and a running dashboard renders nothing. Their schemas were kept for tests at `src/test-support/card-template.ts`. Writing one is ordinary work against a mechanism that is already here.
 
-Two further gaps between the decisions and the tree: the assembler still emits a bare `.tsx` rather than the registry item D32 calls for, and `react-aria-components` is still declared and still what that assembler generates against.
+Further gaps between the decisions and the tree: the assembler still emits a bare `.tsx` rather than the registry item D32 calls for; `react-aria-components` is still declared and still what that assembler generates against; a card still carries its queries and each query its own inline mapper, under the old name `formatter`; and `fontScale` still sits in dashboard configuration. [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the full list, phased.
 
 Delete this section when the last module lands.
 
@@ -60,11 +60,13 @@ A card template is split across two places, and both halves must agree:
 - `contract` holds each template's schema.
 - The card template's component renders data fitting that schema.
 
-Adding a card template by hand is an ordinary source change, reviewed like any other.
+The component half travels as a registry item, which is also what the registry serves and what the assembler emits (D22, D24, D32). An item is not limited to one component file: a hand-written card template that needs a hook, a utility module, or its own tokens and stylesheet rules ships them in the same item, as `registry:hook`, `registry:lib`, `cssVars`, and `css`. The assembled path cannot — a composition tree expresses no hook — so an item carrying one is hand-written.
 
-A card template's component is a declarative composition of the declared library's components — a tree of real component exports with props and nested children, not free-form JSX, not raw DOM elements, not invented primitives. The service can also assemble one: given a composition tree (`{component, props, children}`), it generates a registry item — real source in the shadcn registry item shape, `name`, `type`, `files`, `dependencies`, `registryDependencies` (D22, D32). The assembler's output and the items the registry serves are therefore the same artifact. This is the one card-template capability the service has; built-in formatters and packages stay source-only. Correctness comes from `tsc --noEmit` against the library's real types, not a hand-maintained parallel schema — the input tree carries no per-component vocabulary of its own.
+Adding a card template is governed by `cards: write`, which `admin` holds and `user` does not (D35, D37). The permission is the same whether the item is assembled from a composition tree or hand-written — writing one by hand is that authority exercised at source, where review applies as it does to any other source change, not a way around the permission.
 
-Scope: static trees only. A widget needing local state or hooks (a stepper's `useState`, a drag-and-drop list's own state) can't be expressed as a composition tree and stays hand-written, reviewed the ordinary way. Drag-and-drop is out of scope for the assembled path. One mechanism either way — hand-written or assembled, upstream or in a differently-run copy of this codebase, the composition is the same real library.
+A card template's component is a declarative composition of the declared library's components — a tree of real component exports with props and nested children, not free-form JSX, not raw DOM elements, not invented primitives. The service can also assemble one: given a composition tree (`{component, props, children}`), it generates a registry item — real source in the shadcn registry item shape, `name`, `type`, `files`, `dependencies`, `registryDependencies` (D22, D32). The assembler's output and the items the registry serves are therefore the same artifact. This is the one card-template capability the service has; built-in card mappers and packages stay source-only. Correctness comes from `tsc --noEmit` against the library's real types, not a hand-maintained parallel schema — the input tree carries no per-component vocabulary of its own.
+
+Scope: static trees only. A widget needing local state or hooks (a stepper's `useState`, a drag-and-drop list's own state) can't be expressed as a composition tree and stays hand-written — under the same `cards: write` either way (D37). Drag-and-drop is out of scope for the assembled path. One mechanism either way — hand-written or assembled, upstream or in a differently-run copy of this codebase, the composition is the same real library.
 
 A dashboard declares one presentational library — shadcn/ui — once, at initialization (D23). Hand-written and assembled card templates both compose that library's components directly; there is no separate structural layer beneath it (D25). A theme can only select values that library defines — Tailwind and shadcn's tokens — never arbitrary CSS.
 
@@ -83,25 +85,25 @@ A running dashboard also serves its own wired-in card templates as a shadcn-comp
 Data reaches the screen through a fixed path:
 
 1. A query runs against its integration, under the auth token of the user who supplied it (D29).
-2. The query's formatter maps the result onto the card template's display-role keys.
+2. The card mapper the query names — resolved from the shared store — maps the result onto the card template's display-role keys.
 3. The result is validated against the card template's schema and stored as the card's state.
 4. The card template's component renders that state directly.
 
-The formatter runs on the way in, not at render time, so a card is never persisted with data its template cannot render, and rendering is a straight read with no transform.
+The card mapper runs on the way in, not at render time, so a card is never persisted with data its template cannot render, and rendering is a straight read with no transform.
 
-Several users share one dashboard, each contributing through their own authorized integrations (D29). A query is stored with its owner's user data, and the adapter is passed that user's secret when an update fires (D30, D32). A result entering through one user's token becomes card state every user sees — a deliberate posture, not an oversight: authorizing an integration contributes its data to a shared surface. When two users' queries write the same card, the last write wins.
+Several users share one dashboard, each contributing through their own authorized integrations, through manual edits, and through an agent acting on their behalf (D29). All three arrive as mutations against card state, so no path is privileged over another. A query is stored with its owner's user data, and the adapter is passed that user's secret when an update fires (D30, D32). A result entering through one user's token becomes card state every user sees — a deliberate posture, not an oversight: authorizing an integration contributes its data to a shared surface. When two users' queries write the same card, the last write wins.
 
 ## Service surface
 
 The service exposes two operations: `read(scope)` returns state, and `apply(mutations)` applies one or more mutations atomically. MCP tools and client actions are both mutation constructors.
 
-Mutations change cards, the dashboard, themes, and integrations. They never change roles, built-in formatters, or packages — those are source changes, unreachable through the service at any permission level. Card templates are the one exception (D22): the service can assemble one's component from a declarative composition tree, gated by a permission level like any other mutation.
+Mutations change cards, the dashboard, themes, integrations, and the card mapper store. They never change roles, built-in card mappers, or packages — those are source changes, unreachable through the service at any permission level. Card templates are the one exception (D22): the service can assemble one's component from a declarative composition tree, gated by a permission level like any other mutation.
 
 Every request resolves to an account, then a role, then permissions, at one enforcement point. Access is governed in five categories — `data`, `cards`, `presentation`, `integrations`, `roles` — each holding `noAccess`, `read`, `edit`, or `write`, ranked so each level implies the ones below it.
 
 `edit` changes something that already exists; `write` also creates and destroys. A role with `cards: edit` can retitle a card and change what it shows but cannot add or remove one. A mutation's category and required level both follow from its type, so a caller states only its payload and one lookup decides what the caller's bundle must hold.
 
-The matrix governs shared and server-owned things only (D35). What belongs to one user — their queries, base colour, typeset, own presets — is theirs by structure, and no category or level gates it.
+The matrix governs shared and server-owned things only (D35). What belongs to one user — their queries, base colour, typeset, own presets — is theirs by structure, and no category or level gates it. Adding a card mapper is ungated for the same reason, even though the store is shared: a user who cannot write one cannot make their own query render (D38). Changing or deleting a mapper other cards reference takes `cards: write`.
 
 Two roles ship as defaults (D35): `admin` (`write` on `data`, `cards`, `presentation`, `integrations`; `read` on `roles`) and `user` (`write` on `data`, `read` on `cards`, `presentation`, and `integrations`, `noAccess` on `roles`). Roles are configured by editing a roles file the source imports — the same access as editing source code — not through the service. They do not live in dashboard configuration.
 

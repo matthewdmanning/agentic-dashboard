@@ -578,6 +578,92 @@ Security on Windows was possible after all, so it is done rather than conceded. 
 
 `ls` under a POSIX emulation on Windows still prints `-rw-r--r--` for the hardened file. It is reading a translation, not the ACL; `icacls` is what says what is true.
 
+### D36 — A card template is a registry item; agents compose primitives, never raw HTML or CSS
+
+Decided 2026-09-05.
+
+**The vocabulary is shadcn's.** A card template is a registry item — the same
+unit shadcn distributes, serves, and installs. `registry item` enters
+`CONTEXT.md`; nothing about it is this project's invention, and its fields are
+whatever <https://ui.shadcn.com/schema/registry-item.json> says they are.
+
+**An item carries more than one component.** A composition can arrive with the
+hook, utility module, tokens, and stylesheet rules it needs — `registry:hook`,
+`registry:lib`, `cssVars`, `css` — in the same item, rather than as loose
+instructions beside it. This does not widen D22's assembled path, which still
+cannot express a hook: an item carrying one is hand-written.
+
+**Composition is what an agent submits.** Raw HTML elements and hand-written CSS
+are not an accepted substitute for composing the declared library's primitives.
+This is a rule about what is authored, not about what is rendered — the browser
+receives HTML whichever way the source was written, so "it renders HTML anyway"
+does not license submitting HTML.
+
+`ARCHITECTURE.md` said native HTML and CSS were used "where they are sufficient",
+which read as permission to skip composition. That line is replaced.
+
+### D37 — Adding a card template takes `cards: write`, which `admin` holds
+
+Decided 2026-09-05.
+
+Adding a card template is `admin`'s to do. The permission is `cards: write`
+(D35) — already what `assemble-card-template` requires (D20, D32), and now what
+governs a hand-written one too.
+
+`ARCHITECTURE.md` called hand-writing one "an ordinary source change, reviewed
+like any other", which framed the two paths as differently governed: one by a
+permission, one by repository access. They are not. Hand-writing a card template
+is the same authority exercised at source, and code review is what checks the
+work, not what grants the right to do it.
+
+This narrows D2 further. D2 put card templates wholly on the source-change side;
+D22 carved out the assembled path; this names the permission that covers both.
+Built-in formatters and packages are untouched — those stay source-only, reachable
+by no role.
+
+Consequence for `user`, which holds `cards: read` (D35): a user cannot add a card
+template by either path.
+
+### D38 — `formatter` becomes `cardMapper`, and mappers live in a shared store
+
+Decided 2026-09-05.
+
+**The term.** What was called a formatter is a **card mapper** — Fowler's mapper:
+an object setting up a correspondence between two schemas that stay independent
+of each other. `formatter` named the wrong thing; the artifact does not format
+anything, it restates a shape.
+
+Named for what it maps _to_. What it maps _from_ is any structured data source,
+not only an API response, so naming it after the source would be too narrow.
+
+`formatter` is not recycled. It stays free for business logic that changes data
+before it reaches a card — a different thing, not defined here, and not to be
+conflated with a mapping.
+
+**The home: one shared store, referenced by name.** A card mapper lives in a
+store that cards import from; a card names one rather than carrying a copy. Two
+queries needing the same mapping name the same mapper instead of each holding a
+duplicate.
+
+**This narrows D11.** D11 deleted "wiring" partly on the grounds that nothing is
+shared between queries, deduplicated, or registered centrally — a mapper store is
+exactly a central registry. What survives of D11: a query still names its own
+integration and still runs on its own, and two queries against one calendar still
+fetch separately and hold their own results. What changes: the mapping between
+them is shared rather than copied.
+
+**Who writes one.** A user does — writing a card mapper is theirs by structure,
+like supplying a query (D35), because a mapper is a declarative spec rather than
+code and a user could not otherwise make their own query render. Changing or
+deleting a mapper another card already references is a change to a shared object,
+and takes `cards: write`.
+
+Adding under a name already in the store fails rather than overwriting.
+
+**Unchanged.** A card mapper is still deterministic, still runs on the way in,
+still `"identity"` or a bundled function or a declarative spec, and built-in
+mappers are still source-only.
+
 ---
 
 ## Frontier

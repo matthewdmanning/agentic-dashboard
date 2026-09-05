@@ -2,7 +2,7 @@
 
 ## Status
 
-What D22–D35 decided and the tree does not yet do. Every requirement here traces
+What D22–D38 decided and the tree does not yet do. Every requirement here traces
 to a decision in [`architecture-decisions.md`](architecture-decisions.md); where
 this document and that one disagree, that one wins. Terms are defined in
 [`CONTEXT.md`](../CONTEXT.md) and not redefined here.
@@ -112,19 +112,43 @@ supplied it, in a per-user store the service owns.
 **Acceptance.** Two users each supply a query against the same card. Each reads
 only their own. Both results reach the card, and every user sees both.
 
-### 2.3 Refresh runs under each query's owner
+### 2.3 Card mappers move into a shared store
+
+D38. `formatter` is renamed and rehomed in the same pass, since both touch every
+line that reads a query.
+
+- `formatterSpecSchema` becomes `cardMapperSpecSchema`, and
+  `compileFormatterSpec` (`src/contract/index.ts:483`) becomes
+  `compileCardMapper`. `src/client/formatters/identity.ts` moves with them. The
+  grammar itself is unchanged.
+- `querySchema.formatter` (`src/contract/index.ts:136`) stops holding a spec and
+  holds a mapper's name instead. The spec lives once, in the store.
+- `dashboardConfigurationSchema` gains the store, alongside `cards` and `themes`
+  — it is shared, so it belongs to dashboard configuration rather than user data.
+- Mutations to add, edit, and remove one. Adding is ungated, like supplying a
+  query; adding under a name already present fails rather than overwriting.
+  Editing and removing take `cards: write` (D35), because other users' cards
+  reference what changes.
+- Refresh (`src/server/integrations/index.ts:84`) resolves the name against the
+  store before compiling.
+
+**Acceptance.** Two queries naming one mapper produce the same reshaping from one
+stored spec. Adding a duplicate name fails. A `user` adds a mapper and cannot
+edit another's.
+
+### 2.4 Refresh runs under each query's owner
 
 `TokenProvider` (`src/server/integrations/index.ts:15`) takes the user as well
 as the connection, and `refreshCardQueries` fires each query under its owner's
 secret (D30). The seam gains a dimension rather than being replaced.
 
-### 2.4 Account credentials are hashed
+### 2.5 Account credentials are hashed
 
 `crypto.scrypt` derives, `crypto.timingSafeEqual` compares (D28). The auth store
 holds a hash and salt, never a credential. This closes the `ponytail:` comment
 at `src/auth/index.ts:45`. No dependency added.
 
-### 2.5 Integration tokens are encrypted at rest
+### 2.6 Integration tokens are encrypted at rest
 
 Behind `CredentialStore` (`src/server/integrations/credentials.ts`), which stays
 the single seam (D28):
@@ -140,7 +164,7 @@ the single seam (D28):
 **Acceptance.** A token written before a rotation is still readable while the
 re-encryption pass runs. The store's file holds no plaintext secret.
 
-### 2.6 Integration authorization needs no permission
+### 2.7 Integration authorization needs no permission
 
 Connecting and disconnecting a user's own account is theirs by structure (D35).
 Adding, removing, or redefining the integration itself stays `integrations`
