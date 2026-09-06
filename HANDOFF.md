@@ -26,22 +26,22 @@ tests and 2 browser tests pass.
 - **Restored CI on pull requests**, off since the architecture rewrite (#57),
   and added browser checks as a separate job that stays off the PR lane.
 
-## Needs a decision — not an edit
+## Decisions settled on 2026-09-06
 
-Found by auditing D1–D38 against each other. Each is a real gap, not stale text.
-
-1. **D37's `cards: write` cannot be enforced on the hand-written path.** The one
-   enforcement point (D4) sees service calls; a hand-written card template
-   arrives by editing source, where nothing consults a permission bundle. The
-   decision reads as an enforced gate but is policy for half its scope.
-   Underneath it: no door exists for a hand-authored registry item to enter a
-   _running_ dashboard — the service can only assemble one from a composition
-   tree.
-2. **D38 does not say what happens when a referenced card mapper is deleted.**
-   The service's failure vocabulary already carries "something still in use".
-   Refuse, or cascade?
-3. **Whether Settings reaches card mappers.** It manages integrations, themes,
-   and a user's own appearance. A user writing a mapper has no human screen.
+- Project initialization generates the default shadcn/ui templates. Afterward,
+  an `admin` can assemble a complete template from a mandatory JSON Schema and
+  composition tree. The rebuild is atomic and becomes visible on reload, never
+  as a hot update (D22, D37, D39).
+- Hand-written templates are source changes governed by repository access and
+  review, not application roles.
+- Removing a referenced card mapper returns `in-use`; it never cascades into
+  private queries (D38).
+- Settings does not manage card mappers. It manages connections, shared themes,
+  user appearance, and administrator integration policy.
+- A file-backed integration catalog retains unused dynamic entries for a
+  configurable 30-day default. Administrators may block entries or override a
+  high-level dependency warning to remove them; affected users receive
+  persistent notices (D40).
 
 ## Known drift, deliberately untouched
 
@@ -64,10 +64,9 @@ Found by auditing D1–D38 against each other. Each is a real gap, not stale tex
 [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the
 phased plan for everything D22–D38 decided and the tree has not caught up with.
 
-**Start with Phase 1.** It depends on nothing else and ends with a dashboard that
-renders something: the assembler emits registry items, `react-aria-components`
-leaves `package.json` and the generated source, and the first hand-written shadcn
-card template lands. Zero are wired in today.
+**Start with Phase 1.** It depends on nothing else and ends with an initialized
+dashboard that renders a generated shadcn card template plus an admin assembly
+path whose atomic rebuild becomes active on reload.
 
 Phase 2 (user identity, queries in user data, the card mapper store, credential
 storage) must precede Phase 3 (per-user appearance), because everything in

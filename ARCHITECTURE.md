@@ -26,12 +26,15 @@ Seven modules:
 | `contract`       | Dashboard configuration shape and validation, mutation types, card mapper compilation, card template schemas, role bundle shape. No React, no Node — imported by every other module. |
 | `service`        | The one interface. Role resolution and enforcement, persistence, applying mutations.                                                                                                 |
 | `auth`           | Accounts, credentials, account-to-role resolution. Separate store from dashboard data.                                                                                               |
-| `integrations`   | Optional, user-authorized external-service connections, and backup targets.                                                                                                          |
-| `view`           | React application: rendering, Settings, offline cache, mutation queue, toast.                                                                                                        |
-| `card-templates` | Card template components, paired with their schemas from `contract`. Split out on change cadence: adding one takes `cards: write`, held by `admin` (D37).                            |
+| `integrations`   | File-backed integration catalog, per-user connections, credentials, retention policy, external-service adapters, and backup targets.                                                 |
+| `view`           | React application: rendering the active build, Settings, integration notices, offline cache, mutation queue, toast.                                                                  |
+| `card-templates` | Registry items paired with JSON Schemas, plus the atomic build/publish module. Post-initialization assembly takes `cards: write`, held by `admin` (D37, D39).                        |
 | `mcp`            | Tool definitions. Calls `service`.                                                                                                                                                   |
 
-Runtime dashboard data and installed themes live at a configurable path outside `src/`. Roles live in a file `contract` imports; per-user preferences live in each user's own `.env` files; secrets live in the credential store. None of the three is dashboard configuration.
+Runtime dashboard data, the integration catalog, card-template candidates and
+active builds live at configurable paths outside `src/`. Roles live in a file
+`contract` imports; per-user preferences live in each user's own `.env`
+files; secrets live in the credential store. None of those is source code.
 
 ## Rewrite in progress
 
@@ -60,13 +63,37 @@ A card template is split across two places, and both halves must agree:
 - `contract` holds each template's schema.
 - The card template's component renders data fitting that schema.
 
-The component half travels as a registry item, which is also what the registry serves and what the assembler emits (D22, D24, D32). An item is not limited to one component file: a hand-written card template that needs a hook, a utility module, or its own tokens and stylesheet rules ships them in the same item, as `registry:hook`, `registry:lib`, `cssVars`, and `css`. The assembled path cannot — a composition tree expresses no hook — so an item carrying one is hand-written.
+The component half travels as a registry item paired with a mandatory JSON
+Schema, which is also what the registry serves and what the assembler emits
+(D22, D24, D32). An item is not limited to one component file: a hand-written
+card template that needs a hook, a utility module, or its own tokens and
+stylesheet rules ships them in the same item, as `registry:hook`,
+`registry:lib`, `cssVars`, and `css`. The assembled path cannot — a
+composition tree expresses no hook — so an item carrying one is hand-written.
 
-Adding a card template is governed by `cards: write`, which `admin` holds and `user` does not (D35, D37). The permission is the same whether the item is assembled from a composition tree or hand-written — writing one by hand is that authority exercised at source, where review applies as it does to any other source change, not a way around the permission.
+Initialization generates the default templates from the project's shadcn/ui
+configuration. After initialization, assembling another is governed by
+`cards: write`, which `admin` holds and `user` does not (D35, D37).
+Hand-writing one is a source change governed by repository access and review,
+not by an application role.
 
-A card template's component is a declarative composition of the declared library's components — a tree of real component exports with props and nested children, not free-form JSX, not raw DOM elements, not invented primitives. The service can also assemble one: given a composition tree (`{component, props, children}`), it generates a registry item — real source in the shadcn registry item shape, `name`, `type`, `files`, `dependencies`, `registryDependencies` (D22, D32). The assembler's output and the items the registry serves are therefore the same artifact. This is the one card-template capability the service has; built-in card mappers and packages stay source-only. Correctness comes from `tsc --noEmit` against the library's real types, not a hand-maintained parallel schema — the input tree carries no per-component vocabulary of its own.
+A card template's component is a declarative composition of the declared
+library's components — a tree of real component exports with props and nested
+children, not free-form JSX, not raw DOM elements, not invented primitives. The
+service can assemble one from a JSON Schema plus a composition tree
+(`{component, props, children}`). It generates a registry item — real source
+in the shadcn registry item shape, `name`, `type`, `files`,
+`dependencies`, `registryDependencies` — and pairs it with the schema (D22,
+D32). Correctness comes from JSON Schema validation and `tsc --noEmit` against
+the library's real types, not a hand-maintained per-component prop schema.
 
-Scope: static trees only. A widget needing local state or hooks (a stepper's `useState`, a drag-and-drop list's own state) can't be expressed as a composition tree and stays hand-written — under the same `cards: write` either way (D37). Drag-and-drop is out of scope for the assembled path. One mechanism either way — hand-written or assembled, upstream or in a differently-run copy of this codebase, the composition is the same real library.
+The card-template build module takes a complete candidate set, builds it, and
+atomically promotes its manifest and client assets only on success (D39). The
+mutation waits for that result. Open pages stay on their loaded build; the next
+reload receives the promoted one. The registry endpoint and `CardView` both
+use the active manifest, so served and renderable templates cannot drift.
+
+Scope: static trees only. A widget needing local state or hooks (a stepper's `useState`, a drag-and-drop list's own state) can't be expressed as a composition tree and stays hand-written. Hand-written templates are source changes governed by repository access and review; `cards: write` governs only post-initialization assembly (D37). Drag-and-drop is out of scope for the assembled path. Both paths still produce the same shadcn registry-item unit and enter the dashboard through the same rebuild and manifest.
 
 A dashboard declares one presentational library — shadcn/ui — once, at initialization (D23). Hand-written and assembled card templates both compose that library's components directly; there is no separate structural layer beneath it (D25). A theme can only select values that library defines — Tailwind and shadcn's tokens — never arbitrary CSS.
 
@@ -74,9 +101,14 @@ Every colour a card template names is a semantic token from that set, never a he
 
 Base colour modifies a theme, controlling the token values generated at initialization or when a preset is applied (D27). A preset is a whole token set in the format of `globals-example.css`, never a partial override. `admin` adds presets for everyone; a user may add their own, which no permission gates.
 
-A user owns appearance; the server owns data and card templates (D33). A theme's settings are a typeset — shadcn's typography system — plus the presentational fields of `components.json` (`style`, `tailwind.baseColor`, `tailwind.cssVariables`, `iconLibrary`, `rtl`, `menuColor`, `menuAccent`). That file's structural fields (`aliases`, `rsc`, `tsx`, `tailwind.config`, `tailwind.css`, `tailwind.prefix`, `registries`) stay server-owned and are unreachable through a theme.
+A user owns runtime appearance; the project owns choices that change generated
+source (D33). `style`, `tailwind.cssVariables`, `iconLibrary`, and `rtl`
+are project-owned. Base colour, typeset, `menuColor`, `menuAccent`, and
+personal presets are user-owned and constrained to shadcn's vocabulary.
 
-`components.json` is per-user, generated by extending a server-owned template rather than edited in place (D34) — several of the fields a user owns cannot be changed after initialization, so a change regenerates the file. The split above is what the two halves of that extension hold.
+`components.json` is generated per user from a project-owned template plus the
+user's runtime choices rather than edited in place (D34). Regeneration replaces
+the complete file but cannot change a project-owned field.
 
 A running dashboard also serves its own wired-in card templates as a shadcn-compatible registry, over HTTP at `/r/registry.json` and `/r/<name>.json` (D24) — any shadcn-aware client, including one connected over `shadcn mcp`, can search, view, and add a template straight from the running dashboard.
 
@@ -95,15 +127,20 @@ Several users share one dashboard, each contributing through their own authorize
 
 ## Service surface
 
-The service exposes two operations: `read(scope)` returns state, and `apply(mutations)` applies one or more mutations atomically. MCP tools and client actions are both mutation constructors.
+The service's configuration interface exposes two operations: `read(scope)`
+returns state, and `apply(mutations)` applies one or more mutations atomically.
+MCP tools and client actions are both mutation constructors. Authorizing and
+disconnecting a user's connection are separate live credential handoffs on the
+same service interface, so secrets never enter the mutation or offline-queue
+formats (D14).
 
-Mutations change cards, the dashboard, themes, integrations, and the card mapper store. They never change roles, built-in card mappers, or packages — those are source changes, unreachable through the service at any permission level. Card templates are the one exception (D22): the service can assemble one's component from a declarative composition tree, gated by a permission level like any other mutation.
+Mutations change cards, the dashboard, themes, integrations, and the card mapper store. They never change roles, built-in card mappers, or packages — those are source changes, unreachable through the service at any permission level. Card templates are the one exception (D22): the service can assemble a complete registry item from a mandatory JSON Schema and declarative composition tree, gated by `cards: write`.
 
 Every request resolves to an account, then a role, then permissions, at one enforcement point. Access is governed in five categories — `data`, `cards`, `presentation`, `integrations`, `roles` — each holding `noAccess`, `read`, `edit`, or `write`, ranked so each level implies the ones below it.
 
 `edit` changes something that already exists; `write` also creates and destroys. A role with `cards: edit` can retitle a card and change what it shows but cannot add or remove one. A mutation's category and required level both follow from its type, so a caller states only its payload and one lookup decides what the caller's bundle must hold.
 
-The matrix governs shared and server-owned things only (D35). What belongs to one user — their queries, base colour, typeset, own presets — is theirs by structure, and no category or level gates it. Adding a card mapper is ungated for the same reason, even though the store it lands in is shared: a user who cannot write one cannot make their own query render (D38). Changing or deleting a mapper other cards reference takes `cards: write`.
+The matrix governs shared and server-owned things only (D35). What belongs to one user — their queries, base colour, typeset, menu choices, and own presets — is theirs by structure, and no category or level gates it. Adding a card mapper is ungated for the same reason, even though the store it lands in is shared: a user who cannot write one cannot make their own query render (D38). Changing a referenced mapper takes `cards: write`; deleting one returns `in-use` until its references are removed.
 
 Two roles ship as defaults (D35): `admin` (`write` on `data`, `cards`, `presentation`, `integrations`; `read` on `roles`) and `user` (`write` on `data`, `read` on `cards`, `presentation`, and `integrations`, `noAccess` on `roles`). Roles are configured by editing a roles file the source imports — the same access as editing source code — not through the service. They do not live in dashboard configuration.
 
@@ -111,7 +148,14 @@ A caller with no credential resolves to full permissions if it is the local user
 
 Account credentials are stored only as a `crypto.scrypt` hash and compared with `crypto.timingSafeEqual`; integration tokens are encrypted at rest on the server host under a key rotated every 90 days, each naming the key it was sealed under so a rotation needs no flag day (D28). `CredentialStore` is the single seam every path goes through to reach a stored secret.
 
-`integrations` governs the integration — the service, its adapter, its query surface — which is shared. A user's own authorization to one is theirs by structure and needs no permission, the same as their queries.
+`integrations` governs the shared catalog, adapters, blocking, removal, and
+retention policy. A user's connection is theirs by structure and needs no
+permission. Default and recommended catalog entries persist; unused dynamic
+entries expire after the project-configured retention period, initially 30
+days. A blocked integration cannot connect or refresh, and every affected user
+sees a persistent notice. An administrator can force removal after a high-level
+warning; credentials are destroyed and private queries become unavailable
+rather than being deleted (D40).
 
 Queries are stored with user data, not on a card (D32). Only the owning user reaches them; `admin` may additionally delete them. Because no shared object holds another user's queries, the privacy D31 requires falls out of the storage boundary rather than from filtering on read.
 

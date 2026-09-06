@@ -20,6 +20,12 @@ A card template is whole-widget in grain — a calendar, an Eisenhower plot, a w
 
 A card template displays data that already fits its schema, and nothing more. It does not extract, remove, or reshape data.
 
+Project initialization generates the default card templates from the declared
+component library. After initialization, an `admin` may assemble another from
+two mandatory declarative inputs: its JSON Schema and its composition tree.
+Assembly rebuilds the dashboard atomically; the template becomes active when
+the dashboard is next reloaded.
+
 **This repository currently ships zero card templates.** That is a point in the rewrite, not a property of the design: the five that shipped were deleted (D32) and their shadcn replacements are not written yet, so a dashboard renders no card today. A card template is still the unit everything on a dashboard is built from, and writing one is ordinary work — nothing about the mechanism is missing or pending.
 
 ## Registry item
@@ -68,6 +74,9 @@ A card mapper runs on the way in, before the result is stored as state, never at
 
 Card mappers live in one shared store, and a card references one by name rather than holding a copy (D38). Two queries needing the same mapping name the same mapper. A user writes them: adding one is theirs by structure, like a query. Changing or deleting one another card references takes `cards: write`.
 
+A referenced card mapper cannot be deleted. Removal returns `in-use` until
+every query names something else or is removed.
+
 Not to be confused with a formatter, which is business logic that changes data _before_ it reaches a card. A card mapper only restates a shape; it does not decide anything about the data's meaning.
 
 ## Mutation
@@ -78,23 +87,59 @@ Every write is a mutation. Because a mutation describes a change rather than a r
 
 ## Dashboard configuration
 
-The persistent part of a dashboard — what remains when the data flowing through it changes. It holds cards, the dashboard, themes, integrations, and the card mapper store. Roles are not here — they live in a roles file the source imports. Base colour and typeset are not here either — they are per-user configuration.
+The persistent part of a dashboard — what remains when the data flowing through
+it changes. It holds cards, the dashboard, themes, the card mapper store, and
+project policy. The integration catalog has its own file-backed store. Roles
+live in a roles file the source imports. User appearance and connection
+credentials are not dashboard configuration.
+
+## Integration catalog
+
+The project-wide, file-backed list of integration interfaces users may connect
+to. An entry says how the integration is identified, whether it is default,
+recommended, or dynamically added, and whether it is available or blocked.
+
+Default and recommended entries remain visible with no connections. A dynamic
+entry with no connections remains for the unused-integration retention period,
+then expires. Blocking retains an entry but prevents connections and query
+refreshes. Removing deletes the entry; an administrator must explicitly
+override a high-level warning when connections or queries still depend on it.
 
 ## Integration
 
-A shared interface to an external service, defined once. An integration exposes queries that cards draw from, and may also serve as a backup target. The integration itself is server-owned: adding, removing, or redefining one is governed by the `integrations` category.
+A shared interface to an external service, defined once in the integration
+catalog. An integration exposes queries that cards draw from, and may also serve
+as a backup target. Adding, removing, redefining, or blocking one is governed by
+the `integrations` category.
 
-Authorization is per-user: each user supplies their own auth token for an integration. Two users connected to the same service are using one integration with two tokens, not two integrations. A user's own authorization is theirs by structure — connecting and disconnecting their own account needs no permission.
+## Connection
+
+One user's authorization to one integration. It owns that user's encrypted
+credential and no shared integration definition. Connecting and disconnecting
+are the user's by structure and need no permission.
+
+Disconnecting destroys the credential immediately. Blocking an integration
+leaves its connections stored but unusable. Removing an integration destroys
+all of its connection credentials; private queries remain but become
+unavailable. An affected user sees a persistent notice while an integration is
+blocked or unavailable.
 
 ## Theme
 
 A named set of presentational settings applied to UI components. A theme cannot execute code, read dashboard data, or alter behavior.
 
-A theme's settings are two things: a **typeset** — shadcn's typography system, carrying base text size, line height, block spacing, and the body, heading, and monospace font families — and the presentational fields of `components.json`: `style`, `tailwind.baseColor`, `tailwind.cssVariables`, `iconLibrary`, `rtl`, `menuColor`, and `menuAccent`.
+A theme is the shared presentation a dashboard names. User-owned appearance
+modifies it through base colour, typeset, `menuColor`, `menuAccent`, and
+personal presets, all within the component library's vocabulary.
 
-`components.json`'s remaining fields are code structure, not appearance — `aliases`, `rsc`, `tsx`, `tailwind.config`, `tailwind.css`, `tailwind.prefix`, `registries`. A theme does not reach them.
+`components.json` fields that affect generated source are project-owned:
+`style`, `tailwind.cssVariables`, `iconLibrary`, and `rtl`, together
+with `aliases`, `rsc`, `tsx`, `tailwind.config`, `tailwind.css`,
+`tailwind.prefix`, and `registries`.
 
-Each user has their own `components.json`, generated by extending a server-owned template: the template holds the structural fields, the user's extension holds the presentational ones. It is regenerated when a user's choices change, never patched — several of those fields cannot be altered after initialization.
+Each user has a generated `components.json`. It copies the project-owned
+fields and adds that user's runtime appearance choices. Regeneration replaces
+the file as a whole; it does not let a user change project-owned fields.
 
 Theme definitions live in dashboard configuration; a dashboard references one. A theme's settings are a selection within the dashboard's component library, never arbitrary CSS.
 
@@ -103,6 +148,11 @@ Theme definitions live in dashboard configuration; a dashboard references one. A
 The fixed set of presentational components and CSS a dashboard is built from — shadcn/ui, with Tailwind CSS as its theming framework. Declared once, when the dashboard is initialized. No mutation changes it: changing it is a source change.
 
 A theme can only set values the declared library defines. A card template composes that library's components directly — there is no separate structural layer underneath it. Where this project states no default of its own, shadcn/ui's default is the default.
+
+Project initialization generates the initial component-library configuration,
+card-template manifest, and client build. A later assembled template triggers an
+atomic rebuild. An open page is never hot-replaced; the promoted build is used
+on the next reload.
 
 Every colour anywhere in the project — in a card, in a component — is a semantic token from that library's set (`background`, `foreground`, `primary`, `muted-foreground`, `border`, and the rest), never a hex literal or a palette-scale utility. This is what lets one base colour change recolour everything (D26).
 
@@ -122,7 +172,10 @@ A preset is complete and literal: every semantic-variable-to-colour pair is writ
 
 ## Per-user configuration
 
-The preferences that belong to one user rather than to the dashboard: base colour and typeset. Each user has their own `.env` file or files, and per-user configuration is read from there.
+The preferences that belong to one user rather than to the dashboard: base
+colour, typeset, `menuColor`, `menuAccent`, and personal preset selection.
+Each user has their own `.env` file or files, and per-user configuration is
+read from there.
 
 A user owns appearance, expressed in the component library's own semantics — never in CSS. The server owns data and card templates; a user's appearance settings do not reach either.
 
@@ -138,6 +191,10 @@ Two roles ship as defaults, not as fixed names. `admin` holds `write` on `data`,
 
 A role governs shared and server-owned things only. What belongs to one user — their queries, their own integration authorizations, base colour, typeset, and own presets — is theirs by structure, and no permission gates it.
 
+`integrations: write` also governs project integration policy, blocking
+catalog entries, and removing them. Removal with live dependencies requires an
+explicit override after a high-level warning.
+
 ## Account
 
 The identity a caller presents. An account holds a credential and the name of the role assigned to it, and lives in the auth store, outside dashboard data.
@@ -146,8 +203,21 @@ The local user — the OS account running the server — has full permissions, e
 
 A caller proves it is the local user by presenting a token only that account can read. Being on the same machine is not proof.
 
+## Project policy
+
+Project-wide lifecycle settings governed by the permission category for the
+thing they control. The first policy is the unused-integration retention period,
+defaulting to 30 days and editable with `integrations: write`.
+
 ## Settings
 
-The interface through which a user directly manages integrations, themes, and their own appearance — base colour and typeset — without involving an agent. Roles are not edited here: they live in a file the source imports.
+The interface through which a user directly manages connections, themes, and
+their own appearance — base colour, typeset, menu colour, menu accent, and
+personal presets — without involving an agent. Roles are not edited here: they
+live in a file the source imports.
 
 Settings is a human screen. Managing an integration here means connecting or disconnecting it — granting and revoking this dashboard's authorization to use a service. What a card draws from that service is its query, not a setting on the connection.
+
+Settings also shows persistent blocked or unavailable integration notices. An
+administrator can manage the integration catalog and retention policy there;
+forcing removal with live dependencies requires an explicit warning override.

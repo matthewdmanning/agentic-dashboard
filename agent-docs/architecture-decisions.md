@@ -47,7 +47,9 @@ There is no separate "developer" and "user" concept in the architecture. What di
 
 - changes to dashboard configuration go through the service, governed by a role
 - built-in card mappers and packages are source changes, unreachable through the service at any permission level
-- card templates sit in between: the service can assemble one (D22), and either path takes `cards: write` (D37)
+- card templates sit in between: project initialization and source changes can
+  provide defaults, while post-initialization service assembly takes
+  `cards: write` (D22, D37)
 
 ### D3 — Accounts live in the auth store
 
@@ -115,13 +117,19 @@ Consequences:
 
 Rejected: per-record revisions, and HTTP `ETag`/`If-Match`. Both detect a conflict that mutations mostly do not create.
 
-### D14 — The service exposes `read` and `apply`
+### D14 — Configuration goes through `read` and `apply`
 
-Two operations. `read(scope)` returns state; `apply(mutations)` applies one or more mutations atomically.
+Two configuration operations. `read(scope)` returns state; `apply(mutations)` applies one or more mutations atomically.
 
 Mutation types are a tagged union in `contract`, each tagged with the permission category it requires — so enforcement is one lookup rather than a check hand-written per endpoint, and the offline queue is a list of `apply` payloads rather than its own serialization format.
 
 MCP tools and client actions are both mutation constructors.
+
+Connection credentials are the exception. Authorizing or disconnecting a
+user's connection is a live credential handoff on the same service interface,
+not a configuration mutation: a secret never enters dashboard configuration or
+the offline queue (D28, D35). Those operations still resolve the caller at the
+one enforcement point (D4).
 
 Rejected: a wide RPC surface (`addCard`, `moveCard`, `setTheme`, …). Every action would carry its own endpoint and its own permission check, and the queue would need a second format.
 
@@ -193,10 +201,10 @@ Five categories, each holding one level:
 
 The split falls on the mutation, not the category:
 
-| Level   | Mutations                                                                                                                                       |
-| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
-| `edit`  | `patch-card-state`, `edit-card`, `edit-dashboard`, `edit-theme`, `edit-integration`, `edit-card-mapper`, `insert-card`                          |
-| `write` | `add-card`, `remove-card`, `add-theme`, `remove-theme`, `add-integration`, `remove-integration`, `remove-card-mapper`, `assemble-card-template` |
+| Level   | Mutations                                                                                                                                                                                       |
+| ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `edit`  | `patch-card-state`, `edit-card`, `edit-dashboard`, `edit-theme`, `edit-integration`, `edit-card-mapper`, `insert-card`                                                                          |
+| `write` | `add-card`, `remove-card`, `add-theme`, `remove-theme`, `add-integration`, `remove-integration`, `block-integration`, `edit-integration-policy`, `remove-card-mapper`, `assemble-card-template` |
 
 The point is `data: edit` alongside `cards: edit`: a caller may change what a card shows without being able to add or delete cards. Categories give blast radius by subject; levels give it by verb. `data: edit` ticks a task; `cards: write` adds, removes, retitles, or re-templates a card.
 
@@ -218,19 +226,30 @@ The dashboard arrives in the default configuration, and every entrypoint hangs o
 
 Consequence: `edit-dashboard` is the only dashboard mutation. It reorders card references and changes the theme reference.
 
-### D22 — The service assembles a card template's component from a composition tree
+### D22 — The service assembles a complete card template from declarative input
 
 Decided 2026-09-03.
 
-The service can assemble a card template's component source from agent input, gated like any other mutation (D37 names the permission). The agent never writes code.
+The service can assemble a complete card template from agent input, gated like
+any other mutation (D37 names the permission). The agent never writes code.
 
-The input is a declarative composition tree — `{component: string, props: Record<string, unknown>, children: Node[]}` — describing which of the declared library's components to nest and with what props. The service assembles real source from it: real imports, real JSX, using the component names and props as given, and emits it as a registry item (D32).
+The input includes both parts a card template requires: a JSON Schema describing
+the state the template displays, and a declarative composition tree —
+`{component: string, props: Record<string, unknown>, children: Node[]}` —
+describing which of the declared library's components to nest and with what
+props. The JSON Schema is mandatory. The service assembles real source from the
+tree: real imports, real JSX, using the component names and props as given, and
+emits it as a registry item paired with that schema (D32).
 
 Correctness comes from the library itself, not a hand-authored parallel schema. The assembled file is checked by `tsc --noEmit` (already in `npm run check`) against the library's real types — that is the entire props and children correctness check. A hand-maintained duplicate of those types would drift from them. The input schema stays small and library-agnostic by construction: it describes tree shape, not any one library's vocabulary.
 
 Scope: **static trees only.** A tree of `{component, props, children}` cannot express local state or callbacks — there is no way to represent a hook, or a stepper's `useState`. A card template that needs those stays hand-written. Drag-and-drop is out of scope for the assembled path.
 
 One mechanism, not two: hand-written or assembled, a card template is real composition of the declared library either way.
+
+Assembly triggers the rebuild D39 defines. It is not a hot update: an already
+open dashboard keeps its current build, and the new template takes effect when
+the dashboard is reloaded after the rebuild succeeds.
 
 ### D23 — A dashboard declares its component library at initialization
 
@@ -246,15 +265,28 @@ Rationale: the same reasoning as D22's correctness argument, applied to styling 
 
 Decided 2026-09-04.
 
-Each dashboard's own server (`src/server`) serves its wired-in card templates (D22) as a shadcn-compatible registry (https://ui.shadcn.com/docs/registry/mcp): an index at `/r/registry.json`, each template's built payload at `/r/<name>.json`. Any shadcn-aware client — including one connected over `shadcn mcp` — can search, view, and add a template from a running dashboard the same way it would from shadcn's own registry.
+Each dashboard's own server serves its active card templates (D22) as a
+shadcn-compatible registry (https://ui.shadcn.com/docs/registry/mcp): an index
+at `/r/registry.json`, each template's built payload at
+`/r/<name>.json`. Any shadcn-aware client — including one connected over
+`shadcn mcp` — can search, view, and add a template from a running dashboard
+the same way it would from shadcn's own registry.
 
-The registry is per-dashboard, not per-repo: it's generated by the server process at request time from `includedCardTemplates` (`src/client/cards/index.ts`), the same map that decides which templates are real. A directory scan was rejected — the templates directory also holds a view component, an index module, tests, and in-flight `__assemble-*` files from a concurrent `assemble-card-template` call; scanning it would surface those as items. `includedCardTemplates` is the one place that already answers "which templates are real," so the registry reads that, not the filesystem.
+The registry is per-dashboard, not per-repo. Its source of truth is the active
+card-template manifest produced by initialization or the rebuild in D39. The
+manifest pairs every registry item with its JSON Schema and compiled client
+module. The registry endpoint and the view both read that same active
+generation, so a template cannot be served without being renderable or render
+without being served.
 
-Several templates can share one source file. Because a registry item's file content is the whole file it names, `cardTemplateSourceFiles` (sibling export next to `includedCardTemplates`) maps each template to the file it actually lives in, rather than guessing `<name>.tsx`.
+The index lists items without file content; each item's own
+`/r/<name>.json` inlines the real source as `content`.
+`dependencies` and `registryDependencies` are derived from the item's source
+rather than hand-maintained.
 
-The index lists items without file content (metadata only: name, type, dependencies); each item's own `/r/<name>.json` inlines the real source as `content`. `dependencies` and `registryDependencies` are derived from the template's own imports (`@/components/ui/<name>` for shadcn/ui primitives) rather than hand-maintained, so they can't drift from the source that actually ships.
-
-Rationale: the registry only needed to answer "what can a client search, view, and add from this dashboard" — not also host arbitrary write/download. Discovery plus `add` closes the loop shadcn's own CLI expects; nothing further was built. Deriving everything (which templates exist, what file they're in, what they depend on) from data the codebase already maintains for other reasons is the same locality argument as D23: one source of truth, checkable, no second list to keep in sync by hand.
+A directory scan remains rejected. A build has temporary files and failed
+candidates that are not active templates; only atomic promotion of a complete
+manifest answers which templates are real.
 
 ### D25 — shadcn/ui is the framework
 
@@ -286,7 +318,10 @@ Mechanism note, verified against the shadcn CLI: shadcn's own presets (`componen
 
 Decided 2026-09-04.
 
-**Where per-user configuration lives.** Each user has their own `.env` file or files, holding their preferences — base colour and typeset (D33). Dashboard configuration stays shared, holding what everyone sees. Secrets never live there (D28).
+**Where per-user configuration lives.** Each user has their own `.env` file or
+files, holding their preferences — base colour, typeset, `menuColor`,
+`menuAccent`, and personal preset selection (D33). Dashboard configuration
+stays shared, holding what everyone sees. Secrets never live there (D28).
 
 **Base colour modifies a theme.** Base colour is not a peer of a theme and not an independent layer over one — it is a modifier of the theme. It controls the default token values generated for the project at `init` or when a preset is applied.
 
@@ -372,7 +407,13 @@ Decided 2026-09-04.
 
 This makes D31's privacy outcome structural rather than enforced by filtering. There is no shared object holding another user's queries, so there is nothing to redact on read.
 
-**The card-template assembler emits registry items.** `assemble-card-template` (D22) produces a registry item conforming to the shadcn registry item schema — `name`, `type`, `files`, `dependencies`, `registryDependencies`, and the optional install-time fields — rather than a bare `.tsx` file. The assembler's output and the registry's served items are the same artifact in the same shape, instead of the registry wrapping raw source after the fact.
+**The card-template assembler emits registry items paired with JSON Schemas.**
+`assemble-card-template` (D22) produces a registry item conforming to the
+shadcn registry item schema — `name`, `type`, `files`, `dependencies`,
+`registryDependencies`, and the optional install-time fields — rather than a
+bare `.tsx` file. Its mandatory JSON Schema travels beside that item in the
+card-template manifest. The assembler's output and the registry's served item
+are the same artifact rather than the registry wrapping source after the fact.
 
 **`react-aria-components` leaves `package.json`.** D25 made its use stale; this removes it, outright rather than deprecated.
 
@@ -392,15 +433,28 @@ shadcn is strictly React: every template it offers is a React one — `next`, `v
 - `formatMessage`, the built-in mapper for the `message` template, went with it. `formatIdentity` stays.
 - The deleted schemas moved to `src/test-support/card-template.ts`, out of the shipped product. Tests about the service, the contract, and the registry are not about which templates ship — they need only that one exists — so they register a fixture rather than being deleted alongside it.
 
-### D33 — A theme's settings are a typeset and the presentational half of `components.json`
+### D33 — Build-time component choices are project-owned; runtime appearance is user-owned
 
 Decided 2026-09-04.
 
-**The dividing line: a user owns appearance via semantics; the server owns data and card templates.** A user says what things should look like in the vocabulary the library already defines. They never say it in CSS, and they never reach a card template's markup or a card's data. This is accepted as significantly restructuring the code.
+**The dividing line: a user owns runtime appearance via semantics; the project
+owns choices that change generated source.** A user says what things should
+look like in the vocabulary the library already defines. They never say it in
+CSS, and they never reach a card template's markup or a card's data.
 
-**A theme's settings are two things.**
+The project owns `components.json` fields that affect generated source:
+`style`, `tailwind.cssVariables`, `iconLibrary`, and `rtl`. `style`
+selects a primitive family and component recipe — `base-nova`, for example —
+and cannot be changed after initialization. `rtl` is project-owned because
+the shadcn CLI transforms installed component source for it.
 
-_A typeset_ (https://ui.shadcn.com/docs/typeset) — shadcn's typography system, "one CSS file you own", carrying:
+The user owns base colour, a typeset, `menuColor`, `menuAccent`, and their
+own presets. The two menu fields stay within shadcn's declared values; "bring
+their own" means saving a personal selection or preset in that vocabulary, not
+supplying CSS. Server-owned selections and presets are listed to every user.
+
+_A typeset_ (https://ui.shadcn.com/docs/typeset) is shadcn's typography system
+and carries:
 
 | Variable                 | Holds                 |
 | ------------------------ | --------------------- |
@@ -411,23 +465,34 @@ _A typeset_ (https://ui.shadcn.com/docs/typeset) — shadcn's typography system,
 | `--typeset-font-heading` | heading font family   |
 | `--typeset-font-mono`    | monospace font family |
 
-A typeset inherits the theme's colour, font, and radius tokens rather than restating them, so it composes with the base colour and preset decided in D26 and D27 instead of competing with them.
+A typeset inherits the theme's colour and radius tokens rather than restating
+them, so it composes with the base colour and preset decided in D26 and D27.
 
-_The presentational fields of `components.json`_ — `style`, `tailwind.baseColor`, `tailwind.cssVariables`, `iconLibrary`, `rtl`, `menuColor`, `menuAccent`.
+`components.json` also carries structural fields — `aliases`, `rsc`,
+`tsx`, `tailwind.config`, `tailwind.css`, `tailwind.prefix`,
+`registries`, `$schema` — which remain project-owned.
 
-**Only the presentational half.** `components.json` also carries fields that are code structure, not appearance: `aliases`, `rsc`, `tsx`, `tailwind.config`, `tailwind.css`, `tailwind.prefix`, `registries`, `$schema`. Those are server-owned and unreachable through a theme — a user changing `aliases` would be rewriting import paths, not choosing a look. The split follows the same line as the decision above: semantics to the user, structure to the server.
-
-**There is no `fontScale`.** `--typeset-size` is that setting with a better vocabulary, so font scale is part of the user's typeset, read from their own configuration (D27), rather than a number in dashboard configuration.
+There is no `fontScale`. `--typeset-size` is that setting with a better
+vocabulary, so font scale is part of the user's typeset rather than dashboard
+configuration.
 
 ### D34 — `components.json` is per-user, generated by extending a server-owned template
 
 Decided 2026-09-04.
 
-There is one `components.json` in the repository today, shared by everything. It becomes per-user: each user has their own, produced by extending a server-owned base template rather than written from scratch or edited in place.
+There is one `components.json` in the repository today, shared by everything.
+It becomes generated per user from a project-owned template plus that user's
+runtime choices.
 
-The server template carries the structural fields — `aliases`, `rsc`, `tsx`, `tailwind.config`, `tailwind.css`, `tailwind.prefix`, `registries`, `$schema`. A user's extension carries the presentational ones — `style`, `tailwind.baseColor`, `tailwind.cssVariables`, `iconLibrary`, `rtl`, `menuColor`, `menuAccent`. That is D33's split, expressed as a file layout instead of a rule: a user cannot reach a structural field because their file does not contain one.
+The project template carries every structural and build-time field, including
+`style`, `iconLibrary`, `rtl`, and `tailwind.cssVariables`. The user's
+extension carries base colour, typeset, `menuColor`, and `menuAccent`.
+Generation copies project-owned values; it does not grant the user permission
+to change them.
 
-**Why extension rather than mutation.** shadcn's own documentation (https://ui.shadcn.com/docs/components-json) states that `style`, `tailwind.baseColor`, and `tailwind.cssVariables` cannot be changed after initialization. Those are exactly the fields a user owns. A per-user `components.json` therefore cannot be a document edited over time — it has to be generated at that user's initialization, from the server template plus that user's choices, and regenerated rather than patched when they change. This is the same rule D26 already set for colour: generation happens at build time, and what exists at runtime is a complete, literal artifact.
+A generated file is replaced as a whole rather than patched. Build-time fields
+remain fixed after project initialization; changing one is a project
+reinitialization or source change, not a user preference change.
 
 Doc-version caution: the page above lists `style` as accepting only `new-york` and omits `iconLibrary`, `menuColor`, `menuAccent`, and `rtl`, while this repository's `components.json` already uses `base-nova` and carries all four. The page lags the CLI. Treat the shipped `components.json` and `shadcn --help` as the truth for which fields exist, and the doc for what each one means.
 
@@ -437,7 +502,13 @@ Reference: https://ui.shadcn.com/llms.txt indexes shadcn's documentation and is 
 
 Decided 2026-09-04.
 
-**The matrix governs shared and server-owned things only.** Anything that belongs to one user — their queries, their base colour, their typeset, their own presets — is theirs by structure and is not gated by a category or a level. A user does not need a permission to change their own appearance or supply their own query, because nothing else can reach those in the first place (D32, D33). The one exception is a card mapper, which a user writes into a shared store (D38).
+**The matrix governs shared and project-owned things only.** Anything that
+belongs to one user — their queries, connections, base colour, typeset, menu
+choices, and own presets — is theirs by structure and is not gated by a category
+or a level. A user does not need a permission to change their own appearance or
+supply their own query, because nothing else can reach those in the first place
+(D32, D33). The one exception is a card mapper, which a user writes into a
+shared store (D38).
 
 **Two roles ship as defaults.** They are ordinary configuration, not fixed names in the source — see below.
 
@@ -521,23 +592,27 @@ This is a rule about what is authored, not about what is rendered — the browse
 receives HTML whichever way the source was written, so "it renders HTML anyway"
 does not license submitting HTML.
 
-### D37 — Adding a card template takes `cards: write`, which `admin` holds
+### D37 — Post-initialization card-template assembly takes `cards: write`
 
 Decided 2026-09-05.
 
-Adding a card template is `admin`'s to do. The permission is `cards: write`
-(D35) — what `assemble-card-template` requires, and what governs a hand-written
-one too.
+Project initialization generates the default card templates from the declared
+component library — shadcn/ui for now (D25, D39). That initialization is a
+project operation, not an application role action.
 
-The two paths are not differently governed, one by a permission and one by
-repository access. Hand-writing a card template is the same authority exercised
-at source, and code review checks the work rather than granting the right to do
-it.
+After initialization, adding a card template through
+`assemble-card-template` takes `cards: write`, which the default `admin`
+role holds and `user` does not.
+
+A hand-written card template is a source change, outside the service and its
+permission matrix. Repository access and code review govern it. It enters the
+active dashboard through the same rebuild and manifest as an assembled item,
+not through a second runtime installation door.
 
 Built-in card mappers and packages stay source-only, reachable by no role.
 
-Consequence for `user`, which holds `cards: read`: a user cannot add a card
-template by either path.
+Consequence for `user`, which holds `cards: read`: a user cannot assemble a
+card template.
 
 ### D38 — A card mapper is the mapping, and mappers live in a shared store
 
@@ -574,6 +649,61 @@ supplying a query, which is already theirs.
 Changing or deleting a mapper another card already references is a change to
 something shared, and takes `cards: write`.
 
+Deleting a referenced mapper fails with `in-use`. It never cascades into
+private queries or silently substitutes another mapper. References must be
+removed explicitly first.
+
 **Unchanged.** A card mapper is still deterministic, still runs on the way in,
 still `"identity"` or a bundled function or a declarative spec, and built-in
 mappers are still source-only.
+
+### D39 — Template changes rebuild atomically and activate on reload
+
+Decided 2026-09-06.
+
+Initialization creates the first active card-template manifest and client build
+from the project's shadcn/ui defaults. Any later change that adds or changes a
+card template triggers a rebuild.
+
+The mutation waits for the rebuild. The build module accepts a candidate set of
+registry items and JSON Schemas, validates and type-checks them, builds a
+complete candidate, and atomically promotes its manifest and client assets only
+when the whole build succeeds. A failure leaves the current active build
+untouched and is returned to the caller.
+
+There is no hot update. A page already open keeps the build it loaded. After a
+successful promotion, the next full dashboard reload receives the new build.
+This avoids a background-job interface, partial activation, and executable
+module replacement inside a live page.
+
+### D40 — An integration catalog outlives user connections
+
+Decided 2026-09-06.
+
+The project keeps a file-backed integration catalog. An entry describes the
+shared integration interface and carries whether it is project-provided
+(default or recommended) or dynamically added, plus its availability state. A
+user's connection is separate: their authorization and encrypted credential for
+one catalog entry.
+
+Disconnecting removes the user's credential immediately. A project-provided
+entry remains with zero connections. A dynamic entry with zero connections is
+retained for the project's unused-integration retention period, then removed.
+The default is 30 days. The period is project policy and a role with
+`integrations: write` may change it.
+
+A role with `integrations: write` may block an entry. Blocking immediately
+prevents new connections and query refreshes but retains the catalog entry,
+connections, encrypted credentials, and queries. Every affected user receives a
+persistent visible notice until the block is removed or the integration is
+removed.
+
+An admin may remove an entry that still has connections or query references.
+Before doing so, the interface shows a high-level warning — counts and effects,
+never another user's query text, identity, or credential. Removal requires an
+explicit override. It deletes every stored credential for that entry; affected
+queries remain private and become unavailable rather than being silently
+deleted.
+
+Expiry runs when the application starts and when a connection changes. No
+background scheduler exists for this policy.
