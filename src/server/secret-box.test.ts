@@ -15,25 +15,25 @@ async function keyPath(): Promise<string> {
 }
 
 describe("secret box", () => {
-  test("opens under the same owner it was sealed for", () => {
+  test("opens under the same owner it was sealed for", async () => {
     const box = createSecretBox(randomBytes(32));
-    const sealed = box.seal("alice", "top secret");
-    expect(box.open("alice", sealed)).toBe("top secret");
+    const sealed = await box.seal("alice", "top secret");
+    await expect(box.open("alice", sealed)).resolves.toBe("top secret");
   });
 
-  test("fails to decrypt a secret sealed for another owner", () => {
+  test("fails to decrypt a secret sealed for another owner", async () => {
     const box = createSecretBox(randomBytes(32));
-    const sealed = box.seal("alice", "top secret");
+    const sealed = await box.seal("alice", "top secret");
     // Ownership is bound as AEAD data, not derived into a per-user key — a
     // wrong owner fails the same authentication check tampering would (D41).
-    expect(() => box.open("bob", sealed)).toThrow();
+    await expect(box.open("bob", sealed)).rejects.toThrow();
   });
 
-  test("fails to decrypt a tampered ciphertext", () => {
+  test("fails to decrypt a tampered ciphertext", async () => {
     const box = createSecretBox(randomBytes(32));
-    const sealed = box.seal("alice", "top secret");
+    const sealed = await box.seal("alice", "top secret");
     const tampered = { ...sealed, ciphertext: sealed.ciphertext.replace(/.$/, sealed.ciphertext.endsWith("0") ? "1" : "0") };
-    expect(() => box.open("alice", tampered)).toThrow();
+    await expect(box.open("alice", tampered)).rejects.toThrow();
   });
 });
 

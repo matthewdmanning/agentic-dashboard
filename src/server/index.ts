@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer as createViteServer } from "vite";
@@ -14,7 +15,7 @@ import {
   type ServiceFailureCode,
 } from "../service";
 import { createEncryptedQueryStore } from "../service/queries";
-import { createFileCredentialStore } from "./integrations/credentials";
+import { createEncryptedConnectionStore } from "./integrations/connections";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
 import {
   createSecretBox,
@@ -86,7 +87,7 @@ const failureStatus: Record<ServiceFailureCode, number> = {
   "unknown-id": 404,
   "duplicate-id": 409,
   "in-use": 409,
-  "credentials-unavailable": 500,
+  "connections-unavailable": 500,
   "queries-unavailable": 500,
   "invalid-card-template": 422,
 };
@@ -194,12 +195,13 @@ export async function handleIntegrationTypesRequest(
 }
 
 /**
- * The authorization handoff: hands a connection's secret to
- * `service.authorize`, which is the enforcement point (D1, D4) -- the same
- * one MCP's `authorize-integration` tool calls, so a role check here would
- * be a second door.
+ * The connect handoff: hands a connection's secret to `service.connect`,
+ * which is the enforcement point (D1, D4) -- the same one MCP's
+ * `connect-integration` tool calls, so a role check here would be a second
+ * door. Ungated (D35): the caller resolved inside `service.connect` is
+ * always who the connection belongs to.
  */
-export async function handleIntegrationAuthorizeRequest(
+export async function handleIntegrationConnectRequest(
   request: Request,
   service: DashboardService,
 ): Promise<Response> {
@@ -222,11 +224,40 @@ export async function handleIntegrationAuthorizeRequest(
       );
     }
 
-    await service.authorize(
+    await service.connect(
       body.integrationId,
       body.credential,
       credentialFromRequest(request),
     );
+    return Response.json({ ok: true });
+  } catch (error) {
+    return failureResponse(error);
+  }
+}
+
+/**
+ * The matching disconnect handoff: destroys the caller's own stored
+ * credential for that catalog entry immediately, the entry itself untouched
+ * (D40). Same enforcement point and same ungated structure as `connect`.
+ */
+export async function handleIntegrationDisconnectRequest(
+  request: Request,
+  service: DashboardService,
+): Promise<Response> {
+  try {
+    if (request.method !== "POST") {
+      return new Response("Method not allowed", { status: 405 });
+    }
+
+    const body = (await request.json()) as { integrationId?: string };
+    if (!body.integrationId) {
+      return Response.json(
+        { code: "invalid-request", message: "integrationId is required" },
+        { status: 400 },
+      );
+    }
+
+    await service.disconnect(body.integrationId, credentialFromRequest(request));
     return Response.json({ ok: true });
   } catch (error) {
     return failureResponse(error);
@@ -241,9 +272,9 @@ async function startServer() {
   const authStorePath =
     process.env.DASHBOARD_AUTH_STORE_PATH ??
     join(workspace, ".dashboard", "accounts.json");
-  const credentialsPath =
-    process.env.DASHBOARD_INTEGRATION_CREDENTIALS_PATH ??
-    join(workspace, ".dashboard", "integration-credentials.json");
+  const connectionsPath =
+    process.env.DASHBOARD_CONNECTIONS_PATH ??
+    join(workspace, ".dashboard", "connections.json");
   const catalogPath =
     process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
     join(workspace, ".dashboard", "integrations.json");
@@ -266,16 +297,16 @@ async function startServer() {
   // Loopback proves same machine, not same user (D35). The token file does —
   // only the OS account running this process can read it.
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
-  const credentials = createFileCredentialStore(credentialsPath);
+  // One host-held key seals both stores (D28, D41) — queries and connections
+  // are the two callers D41 names for this seam.
+  const secretBox = createSecretBox(await resolveSecretKey(secretKeyPath));
+  const connections = createEncryptedConnectionStore(connectionsPath, secretBox);
   const catalog = createFileIntegrationCatalog(catalogPath);
-  const queries = createEncryptedQueryStore(
-    queriesPath,
-    createSecretBox(await resolveSecretKey(secretKeyPath)),
-  );
+  const queries = createEncryptedQueryStore(queriesPath, secretBox);
   const service = createService({
     persistence: createFilePersistence(dashboardPath),
     authStore: createFileAuthStore(authStorePath),
-    credentials,
+    connections,
     catalog,
     queries,
     localUserToken,
@@ -284,11 +315,19 @@ async function startServer() {
   });
   // Internal plumbing for the server's own outbound calls, not a caller-facing
   // operation -- reads the same store `service` composes, directly.
+  //
+  // ponytail: resolves under the local OS account rather than each query's
+  // actual owner. `TokenProvider` (`server/integrations/index.ts`) has no
+  // owner parameter yet — threading a resolved caller through refresh is
+  // #90's job, which is expected to change this signature. Until then this
+  // matches every other caller this build treats as local when no auth is
+  // configured (D35), and is exactly what the credential store this
+  // replaces did.
   const tokenProvider: TokenProvider = async (integrationId) => {
-    const credential = await credentials.get(integrationId);
+    const credential = await connections.get(userInfo().username, integrationId);
     if (!credential) {
       throw new Error(
-        `Integration '${integrationId}' is not authorized. Connect it in Settings.`,
+        `Integration '${integrationId}' is not connected. Connect it in Settings.`,
       );
     }
     return credential;
@@ -334,11 +373,32 @@ async function startServer() {
       return;
     }
 
-    if (request.url === "/api/integrations/authorize") {
+    if (request.url === "/api/integrations/connect") {
       try {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(Buffer.from(chunk));
-        const result = await handleIntegrationAuthorizeRequest(
+        const result = await handleIntegrationConnectRequest(
+          new Request(`http://dashboard${request.url}`, {
+            method: request.method,
+            headers: authorizationHeaders(request),
+            body: chunks.length ? Buffer.concat(chunks).toString("utf8") : undefined,
+          }),
+          service,
+        );
+        response.writeHead(result.status, Object.fromEntries(result.headers));
+        response.end(Buffer.from(await result.arrayBuffer()));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "text/plain" });
+        response.end(error instanceof Error ? error.message : "Connect failed");
+      }
+      return;
+    }
+
+    if (request.url === "/api/integrations/disconnect") {
+      try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const result = await handleIntegrationDisconnectRequest(
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),
@@ -351,7 +411,7 @@ async function startServer() {
       } catch (error) {
         response.writeHead(400, { "content-type": "text/plain" });
         response.end(
-          error instanceof Error ? error.message : "Authorization failed",
+          error instanceof Error ? error.message : "Disconnect failed",
         );
       }
       return;

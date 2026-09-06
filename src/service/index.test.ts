@@ -12,7 +12,10 @@ import {
   type Mutation,
   type Role,
 } from "../contract";
-import type { CredentialStore } from "../server/integrations/credentials";
+import {
+  createEncryptedConnectionStore,
+  type ConnectionStore,
+} from "../server/integrations/connections";
 import { createFileIntegrationCatalog } from "../server/integrations/catalog";
 import { createSecretBox } from "../server/secret-box";
 import {
@@ -43,15 +46,22 @@ useTestCardTemplates();
 /** The default configuration is cardless since D32; these tests need a card. */
 const testConfiguration = withTestCard(defaultDashboardConfiguration);
 
-function createMemoryCredentialStore(): CredentialStore {
+/** Keyed by user and catalog entry (D40, #88), unlike the single-key credential store it replaced. */
+function createMemoryConnectionStore(): ConnectionStore {
   const values = new Map<string, string>();
+  const key = (user: string, catalogEntryId: string) => `${user} ${catalogEntryId}`;
   return {
-    get: async (id) => values.get(id),
-    set: async (id, credential) => {
-      values.set(id, credential);
+    get: async (user, catalogEntryId) => values.get(key(user, catalogEntryId)),
+    set: async (user, catalogEntryId, credential) => {
+      values.set(key(user, catalogEntryId), credential);
     },
-    remove: async (id) => {
-      values.delete(id);
+    remove: async (user, catalogEntryId) => {
+      values.delete(key(user, catalogEntryId));
+    },
+    removeAllForEntry: async (catalogEntryId) => {
+      for (const existingKey of [...values.keys()]) {
+        if (existingKey.endsWith(` ${catalogEntryId}`)) values.delete(existingKey);
+      }
     },
   };
 }
@@ -705,108 +715,170 @@ describe("card template assembly", () => {
   });
 });
 
-describe("integration authorization", () => {
-  test("stores a connection's credential, gated at integrations: edit", async () => {
-    const credentials = createMemoryCredentialStore();
+describe("integration connections", () => {
+  function twoUserAuthStore() {
+    return {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : undefined,
+    };
+  }
+
+  const withTeamCalendar = {
+    ...testConfiguration,
+    integrations: [
+      { id: "team-calendar", type: "google-calendar", settings: {} },
+    ],
+  };
+
+  test("two users connect to the same catalog entry with different credentials, and both work", async () => {
+    const connections = createMemoryConnectionStore();
     const service = createService({
-      persistence: createMemoryPersistence({
-        ...testConfiguration,
-        integrations: [
-          { id: "team-calendar", type: "google-calendar", settings: {} },
-        ],
-      }),
-      credentials,
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      authStore: twoUserAuthStore(),
     });
 
-    await service.authorize("team-calendar", "secret-token");
+    await service.connect("team-calendar", "alice-secret", "alice-token");
+    await service.connect("team-calendar", "bob-secret", "bob-token");
 
-    await expect(credentials.get("team-calendar")).resolves.toBe(
+    await expect(connections.get("alice", "team-calendar")).resolves.toBe(
+      "alice-secret",
+    );
+    await expect(connections.get("bob", "team-calendar")).resolves.toBe(
+      "bob-secret",
+    );
+  });
+
+  test("connecting as one user never touches another user's connection to the same entry", async () => {
+    const connections = createMemoryConnectionStore();
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      authStore: twoUserAuthStore(),
+    });
+    await service.connect("team-calendar", "alice-secret", "alice-token");
+
+    await service.connect("team-calendar", "bob-secret", "bob-token");
+
+    await expect(connections.get("alice", "team-calendar")).resolves.toBe(
+      "alice-secret",
+    );
+  });
+
+  test("a caller with no integrations permission can still connect and disconnect their own account (D35)", async () => {
+    const connections = createMemoryConnectionStore();
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "write",
+        presentation: "write",
+        integrations: "noAccess",
+        roles: "noAccess",
+      }),
+    });
+
+    await service.connect("team-calendar", "secret-token");
+    await expect(connections.get(userInfo().username, "team-calendar")).resolves.toBe(
       "secret-token",
     );
+
+    await service.disconnect("team-calendar");
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBeUndefined();
   });
 
-  test("refuses to store a credential for an integration that does not exist", async () => {
-    const credentials = createMemoryCredentialStore();
+  test("refuses to connect to a catalog entry that does not exist", async () => {
+    const connections = createMemoryConnectionStore();
     const service = createService({
       persistence: createMemoryPersistence(),
-      credentials,
-    });
-
-    await expect(service.authorize("invented", "secret-token")).rejects.toThrow(
-      "Unknown integration: invented",
-    );
-    await expect(credentials.get("invented")).resolves.toBeUndefined();
-  });
-
-  test("refuses a caller without integrations: edit", async () => {
-    const credentials = createMemoryCredentialStore();
-    const service = createService({
-      persistence: createMemoryPersistence(),
-        localUser: withLocalPermissions({
-          data: "write",
-          cards: "write",
-          presentation: "write",
-          integrations: "read",
-          roles: "noAccess",
-        }),
-      credentials,
+      connections,
     });
 
     await expect(
-      service.authorize("team-calendar", "secret-token"),
-    ).rejects.toThrow("integrations: edit");
-    await expect(credentials.get("team-calendar")).resolves.toBeUndefined();
+      service.connect("invented", "secret-token"),
+    ).rejects.toThrow("Unknown integration: invented");
+    await expect(
+      connections.get(userInfo().username, "invented"),
+    ).resolves.toBeUndefined();
   });
 
-  test("removing an integration drops its stored credential, whichever adapter asked", async () => {
-    const credentials = createMemoryCredentialStore();
-    await credentials.set("team-calendar", "secret-token");
+  test("disconnect removes the caller's credential immediately and leaves the catalog entry intact", async () => {
+    const connections = createMemoryConnectionStore();
     const service = createService({
-      persistence: createMemoryPersistence({
-        ...testConfiguration,
-        integrations: [
-          { id: "team-calendar", type: "google-calendar", settings: {} },
-        ],
-      }),
-      credentials,
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      authStore: twoUserAuthStore(),
     });
+    await service.connect("team-calendar", "alice-secret", "alice-token");
+    await service.connect("team-calendar", "bob-secret", "bob-token");
+
+    await service.disconnect("team-calendar", "alice-token");
+
+    await expect(
+      connections.get("alice", "team-calendar"),
+    ).resolves.toBeUndefined();
+    await expect(connections.get("bob", "team-calendar")).resolves.toBe(
+      "bob-secret",
+    );
+    await expect(service.read("integrations", "alice-token")).resolves.toEqual(
+      withTeamCalendar.integrations,
+    );
+  });
+
+  test("a connected credential never appears in an apply payload or the persisted configuration", async () => {
+    const connections = createMemoryConnectionStore();
+    const persistence = createMemoryPersistence(withTeamCalendar);
+    const service = createService({ persistence, connections });
+
+    await service.connect("team-calendar", "very-secret-token");
+    await service.apply([
+      { type: "patch-card-state", cardId: "welcome", patch: { message: "hi" } },
+    ]);
+
+    for (const write of persistence.writes) {
+      expect(JSON.stringify(write)).not.toContain("very-secret-token");
+    }
+  });
+
+  test("removing a catalog entry destroys every user's connection to it, leaving no ciphertext in the store", async () => {
+    const path = join(
+      await mkdtemp(join(tmpdir(), "connections-")),
+      "connections.json",
+    );
+    const connections = createEncryptedConnectionStore(
+      path,
+      createSecretBox(randomBytes(32)),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      authStore: twoUserAuthStore(),
+    });
+    await service.connect("team-calendar", "alice-secret-token", "alice-token");
+    await service.connect("team-calendar", "bob-secret-token", "bob-token");
 
     await service.apply([
       { type: "remove-integration", integrationId: "team-calendar" },
     ]);
 
-    await expect(credentials.get("team-calendar")).resolves.toBeUndefined();
-  });
-
-  test("a failed apply leaves the credential in place", async () => {
-    const credentials = createMemoryCredentialStore();
-    await credentials.set("team-calendar", "secret-token");
-    const service = createService({
-      persistence: createMemoryPersistence({
-        ...testConfiguration,
-        integrations: [
-          { id: "team-calendar", type: "google-calendar", settings: {} },
-        ],
-      }),
-      credentials,
-    });
-
-    // The batch fails on its second mutation, after `remove-integration`
-    // already ran against the in-memory candidate — proving the credential
-    // revoke that rides along with a successful removal never fires unless
-    // the whole batch, including persistence, actually lands.
     await expect(
-      service.apply([
-        { type: "remove-integration", integrationId: "team-calendar" },
-        {
-          type: "edit-theme",
-          theme: { id: "definitely-missing", settings: {} },
-        },
-      ]),
-    ).rejects.toThrow("Unknown theme: definitely-missing");
-    await expect(credentials.get("team-calendar")).resolves.toBe(
-      "secret-token",
-    );
+      connections.get("alice", "team-calendar"),
+    ).resolves.toBeUndefined();
+    await expect(
+      connections.get("bob", "team-calendar"),
+    ).resolves.toBeUndefined();
+
+    const raw = await readFile(path, "utf8");
+    expect(raw).not.toContain("alice-secret-token");
+    expect(raw).not.toContain("bob-secret-token");
+    expect(JSON.parse(raw)).toEqual([]);
   });
 });
 

@@ -92,13 +92,13 @@ async function readRecords(path: string): Promise<StoredRecord[]> {
 }
 
 /** Seals `query`'s private half under `owner`, keeping the rest as the cleartext envelope. */
-function toRecord(owner: string, query: StoredQuery, secretBox: SecretBox): StoredRecord {
+async function toRecord(owner: string, query: StoredQuery, secretBox: SecretBox): Promise<StoredRecord> {
   return {
     id: query.id,
     owner,
     cardId: query.cardId,
     cardMapper: query.cardMapper,
-    sealed: secretBox.seal(
+    sealed: await secretBox.seal(
       owner,
       JSON.stringify({ integration: query.integration, query: query.query }),
     ),
@@ -106,9 +106,9 @@ function toRecord(owner: string, query: StoredQuery, secretBox: SecretBox): Stor
 }
 
 /** Opens `record`'s seal under its own recorded owner — never a caller-supplied identity. */
-function toStoredQuery(record: StoredRecord, secretBox: SecretBox): StoredQuery {
+async function toStoredQuery(record: StoredRecord, secretBox: SecretBox): Promise<StoredQuery> {
   const { integration, query } = privatePayloadSchema.parse(
-    JSON.parse(secretBox.open(record.owner, record.sealed)),
+    JSON.parse(await secretBox.open(record.owner, record.sealed)),
   );
   return storedQuerySchema.parse({
     id: record.id,
@@ -133,13 +133,15 @@ export function createEncryptedQueryStore(
   return {
     list: async (user) => {
       const records = await readRecords(path);
-      return records
-        .filter((record) => record.owner === user)
-        .map((record) => toStoredQuery(record, secretBox));
+      return Promise.all(
+        records
+          .filter((record) => record.owner === user)
+          .map((record) => toStoredQuery(record, secretBox)),
+      );
     },
     add: async (user, query) => {
       const records = await readRecords(path);
-      records.push(toRecord(user, query, secretBox));
+      records.push(await toRecord(user, query, secretBox));
       await writeJson(path, records);
     },
     edit: async (user, query) => {
@@ -148,7 +150,7 @@ export function createEncryptedQueryStore(
         (record) => record.owner === user && record.id === query.id,
       );
       if (index === -1) return false;
-      records[index] = toRecord(user, query, secretBox);
+      records[index] = await toRecord(user, query, secretBox);
       await writeJson(path, records);
       return true;
     },

@@ -15,7 +15,7 @@ function render(
       callerRole,
       connectableTypes: ["example-service"],
       onSave: async () => undefined,
-      onAuthorize: async () => undefined,
+      onConnect: async () => undefined,
     }),
   );
 }

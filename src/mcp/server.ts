@@ -242,10 +242,10 @@ export function createDashboardMcpServer(service: DashboardService) {
   );
 
   server.registerTool(
-    "authorize-integration",
+    "connect-integration",
     {
       description:
-        "Hand off an already-obtained credential (an access token, an API key) to authorize an existing integration.",
+        "Hand off an already-obtained credential (an access token, an API key) to connect your own account to an existing integration.",
       inputSchema: z.object({
         integrationId: z.string(),
         credential: z.string(),
@@ -253,8 +253,22 @@ export function createDashboardMcpServer(service: DashboardService) {
     },
     async ({ integrationId, credential }) =>
       reply(async () => {
-        await service.authorize(integrationId, credential);
-        return "Integration authorized";
+        await service.connect(integrationId, credential);
+        return "Connected";
+      }),
+  );
+
+  server.registerTool(
+    "disconnect-integration",
+    {
+      description:
+        "Destroy your own stored credential for an integration. The integration itself is unaffected.",
+      inputSchema: z.object({ integrationId: z.string() }),
+    },
+    async ({ integrationId }) =>
+      reply(async () => {
+        await service.disconnect(integrationId);
+        return "Disconnected";
       }),
   );
 

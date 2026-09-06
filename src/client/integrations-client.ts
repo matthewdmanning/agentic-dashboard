@@ -25,17 +25,18 @@ export async function loadConnectableIntegrationTypes(): Promise<string[]> {
 }
 
 /**
- * The authorization handoff for one connection: hands the service's secret to
- * the server, which stores it outside dashboard configuration. Not a
- * mutation — a credential never reaches `contract` (it refuses a
- * credential-shaped settings key), so this has no `apply` payload of its own.
+ * The connect handoff for one connection: hands the service's secret to the
+ * server, which stores it outside dashboard configuration, keyed by the
+ * caller and this catalog entry (D40). Not a mutation — a credential never
+ * reaches `contract` (it refuses a credential-shaped settings key), so this
+ * has no `apply` payload of its own.
  */
-export async function authorizeIntegration(
+export async function connectIntegration(
   integrationId: string,
   credential: string,
 ): Promise<void> {
   const response = await fetch(
-    "/api/integrations/authorize",
+    "/api/integrations/connect",
     authorized({
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -43,6 +44,27 @@ export async function authorizeIntegration(
     }),
   );
   if (!response.ok) {
-    throw await failureFrom(response, "Could not authorize integration");
+    throw await failureFrom(response, "Could not connect integration");
+  }
+}
+
+/**
+ * The matching disconnect handoff: destroys the caller's own stored
+ * credential for that catalog entry immediately (D40). Not wired into
+ * Settings yet — its "Disconnect" button still removes the catalog entry
+ * itself via a mutation. ponytail: wire this in when Settings gets a real
+ * disconnect-without-removing control; not required by #88's acceptance.
+ */
+export async function disconnectIntegration(integrationId: string): Promise<void> {
+  const response = await fetch(
+    "/api/integrations/disconnect",
+    authorized({
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ integrationId }),
+    }),
+  );
+  if (!response.ok) {
+    throw await failureFrom(response, "Could not disconnect integration");
   }
 }

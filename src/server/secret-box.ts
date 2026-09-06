@@ -28,10 +28,21 @@ export type SealedSecret = z.infer<typeof sealedSecretSchema>;
  * tag. This is the reusable seam D41 names for #88's connection credentials:
  * same shape, same primitive, any per-user secret a caller must decrypt to
  * use but must not store in the clear.
+ *
+ * `seal`/`open` are async, not because this local implementation needs it,
+ * but because a hosted deployment cannot hold this key in a host file at
+ * all — it must reach a third-party secrets manager instead. A key-custody
+ * service could still hand `resolveSecretKey` bytes to hand to
+ * `createSecretBox`, but a key-management service (the KMS/Transit shape)
+ * never releases key material — it performs the encrypt/decrypt itself, so
+ * a remote `SecretBox` is the only way to use one, and that call crosses a
+ * network. The signature has to allow that from the start, or every caller
+ * needs rewriting the day a remote implementation shows up. Don't
+ * "simplify" this back to synchronous.
  */
 export interface SecretBox {
-  seal(owner: string, plaintext: string): SealedSecret;
-  open(owner: string, sealed: SealedSecret): string;
+  seal(owner: string, plaintext: string): Promise<SealedSecret>;
+  open(owner: string, sealed: SealedSecret): Promise<string>;
 }
 
 export function createSecretBox(key: Buffer): SecretBox {
@@ -39,7 +50,7 @@ export function createSecretBox(key: Buffer): SecretBox {
     throw new Error("Secret key must be 32 bytes (AES-256)");
   }
   return {
-    seal(owner, plaintext) {
+    async seal(owner, plaintext) {
       const iv = randomBytes(ivLength);
       const cipher = createCipheriv(algorithm, key, iv);
       cipher.setAAD(Buffer.from(owner, "utf8"));
@@ -53,7 +64,7 @@ export function createSecretBox(key: Buffer): SecretBox {
         ciphertext: ciphertext.toString("hex"),
       };
     },
-    open(owner, sealed) {
+    async open(owner, sealed) {
       const decipher = createDecipheriv(
         algorithm,
         key,
@@ -94,7 +105,7 @@ export const secretKeyEnvVar = "DASHBOARD_SECRET_KEY";
  *
  * ponytail: one long-lived key, no rotation. D28's 90-day rotation is #91's
  * job — when it lands, a sealed value needs to name which key it was sealed
- * under, the same way `CredentialStore` will.
+ * under, the same way the connection store will.
  */
 export async function resolveSecretKey(path: string): Promise<Buffer> {
   const fromEnv = process.env[secretKeyEnvVar];

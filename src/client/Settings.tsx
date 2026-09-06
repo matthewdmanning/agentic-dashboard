@@ -11,7 +11,7 @@ export function Settings({
   callerRole,
   connectableTypes,
   onSave,
-  onAuthorize,
+  onConnect,
 }: {
   dashboard: ReadableDashboard;
   /** The caller's own role, so a user can see what this session may do. */
@@ -20,7 +20,7 @@ export function Settings({
   connectableTypes: string[];
   onSave: (mutations: readonly Mutation[]) => Promise<void>;
   /** Hands a connection's secret to the server. Not a mutation — see `contract`'s ban on a credential-shaped settings key. */
-  onAuthorize: (integrationId: string, credential: string) => Promise<void>;
+  onConnect: (integrationId: string, credential: string) => Promise<void>;
 }) {
   const initial: DashboardSettings = {
     dashboard: dashboard.dashboard,
@@ -53,7 +53,7 @@ export function Settings({
     setError(undefined);
     void (connection.credential === ""
       ? Promise.resolve()
-      : onAuthorize(connection.id, connection.credential)
+      : onConnect(connection.id, connection.credential)
     )
       .then(() => {
         setSettings({

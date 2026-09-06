@@ -32,9 +32,9 @@ async function main() {
   const authStorePath =
     process.env.DASHBOARD_AUTH_STORE_PATH ??
     join(workspace, ".dashboard", "accounts.json");
-  const credentialsPath =
-    process.env.DASHBOARD_INTEGRATION_CREDENTIALS_PATH ??
-    join(workspace, ".dashboard", "integration-credentials.json");
+  const connectionsPath =
+    process.env.DASHBOARD_CONNECTIONS_PATH ??
+    join(workspace, ".dashboard", "connections.json");
   const catalogPath =
     process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
     join(workspace, ".dashboard", "integrations.json");
@@ -63,8 +63,8 @@ async function main() {
   await writeIfAbsent(authStorePath, "[]\n");
   console.log(`Initialized auth store: ${authStorePath}`);
 
-  await writeIfAbsent(credentialsPath, "{}\n");
-  console.log(`Initialized credential store: ${credentialsPath}`);
+  await writeIfAbsent(connectionsPath, "[]\n");
+  console.log(`Initialized connection store: ${connectionsPath}`);
 
   await createFileIntegrationCatalog(catalogPath).read();
   console.log(`Initialized integration catalog: ${catalogPath}`);

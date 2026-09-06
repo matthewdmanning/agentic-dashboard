@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { userInfo } from "node:os";
 
 import { defaultDashboardConfiguration, roles, type Role } from "../contract";
 import {
@@ -7,10 +8,11 @@ import {
   type DashboardService,
 } from "../service";
 import type { StoredQuery, UserQueryStore } from "../service/queries";
-import type { CredentialStore } from "./integrations/credentials";
+import type { ConnectionStore } from "./integrations/connections";
 import {
   handleDashboardConfigurationRequest,
-  handleIntegrationAuthorizeRequest,
+  handleIntegrationConnectRequest,
+  handleIntegrationDisconnectRequest,
   handleIntegrationRefreshRequest,
   handleIntegrationTypesRequest,
 } from "./index";
@@ -31,15 +33,22 @@ function createMemoryPersistence(
   };
 }
 
-function createMemoryCredentialStore(): CredentialStore {
+/** Keyed by user and catalog entry (D40, #88), unlike the single-key credential store it replaced. */
+function createMemoryConnectionStore(): ConnectionStore {
   const values = new Map<string, string>();
+  const key = (user: string, catalogEntryId: string) => `${user} ${catalogEntryId}`;
   return {
-    get: async (id) => values.get(id),
-    set: async (id, credential) => {
-      values.set(id, credential);
+    get: async (user, catalogEntryId) => values.get(key(user, catalogEntryId)),
+    set: async (user, catalogEntryId, credential) => {
+      values.set(key(user, catalogEntryId), credential);
     },
-    remove: async (id) => {
-      values.delete(id);
+    remove: async (user, catalogEntryId) => {
+      values.delete(key(user, catalogEntryId));
+    },
+    removeAllForEntry: async (catalogEntryId) => {
+      for (const existingKey of [...values.keys()]) {
+        if (existingKey.endsWith(` ${catalogEntryId}`)) values.delete(existingKey);
+      }
     },
   };
 }
@@ -76,7 +85,7 @@ function createMemoryUserQueryStore(): UserQueryStore {
 function createTestService(
   initial = defaultDashboardConfiguration,
   extra: {
-    credentials?: CredentialStore;
+    connections?: ConnectionStore;
     connectableTypes?: string[];
     localUser?: Role;
     queries?: UserQueryStore;
@@ -412,9 +421,9 @@ describe("integration types endpoint", () => {
   });
 });
 
-describe("integration authorization endpoint", () => {
+describe("integration connect endpoint", () => {
   test("stores a connection's credential through the one enforcement point", async () => {
-    const credentials = createMemoryCredentialStore();
+    const connections = createMemoryConnectionStore();
     const service = createTestService(
       {
         ...defaultDashboardConfiguration,
@@ -422,13 +431,11 @@ describe("integration authorization endpoint", () => {
           { id: "team-calendar", type: "google-calendar", settings: {} },
         ],
       },
-      {
-        credentials,
-      },
+      { connections },
     );
 
-    const response = await handleIntegrationAuthorizeRequest(
-      new Request("http://dashboard/api/integrations/authorize", {
+    const response = await handleIntegrationConnectRequest(
+      new Request("http://dashboard/api/integrations/connect", {
         method: "POST",
         body: JSON.stringify({
           integrationId: "team-calendar",
@@ -439,29 +446,38 @@ describe("integration authorization endpoint", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(credentials.get("team-calendar")).resolves.toBe(
-      "secret-token",
-    );
+    // No `authStore` configured — the caller resolves to the local OS user.
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBe("secret-token");
   });
 
-  test("refuses a caller without integrations: edit", async () => {
-    const credentials = createMemoryCredentialStore();
-    const service = createTestService(defaultDashboardConfiguration, {
-      credentials,
-      localUser: {
-        name: "localUser",
-        permissions: {
-          data: "write",
-          cards: "write",
-          presentation: "write",
-          integrations: "read",
-          roles: "noAccess",
+  test("a caller with no integrations permission still connects their own account (D35)", async () => {
+    const connections = createMemoryConnectionStore();
+    const service = createTestService(
+      {
+        ...defaultDashboardConfiguration,
+        integrations: [
+          { id: "team-calendar", type: "google-calendar", settings: {} },
+        ],
+      },
+      {
+        connections,
+        localUser: {
+          name: "localUser",
+          permissions: {
+            data: "write",
+            cards: "write",
+            presentation: "write",
+            integrations: "noAccess",
+            roles: "noAccess",
+          },
         },
       },
-    });
+    );
 
-    const response = await handleIntegrationAuthorizeRequest(
-      new Request("http://dashboard/api/integrations/authorize", {
+    const response = await handleIntegrationConnectRequest(
+      new Request("http://dashboard/api/integrations/connect", {
         method: "POST",
         body: JSON.stringify({
           integrationId: "team-calendar",
@@ -471,21 +487,20 @@ describe("integration authorization endpoint", () => {
       service,
     );
 
-    expect(response.status).toBe(403);
-    await expect(response.json()).resolves.toMatchObject({
-      code: "permission-denied",
-    });
-    await expect(credentials.get("team-calendar")).resolves.toBeUndefined();
+    expect(response.status).toBe(200);
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBe("secret-token");
   });
 
   test("requires both an integrationId and a credential", async () => {
-    const response = await handleIntegrationAuthorizeRequest(
-      new Request("http://dashboard/api/integrations/authorize", {
+    const response = await handleIntegrationConnectRequest(
+      new Request("http://dashboard/api/integrations/connect", {
         method: "POST",
         body: JSON.stringify({ integrationId: "team-calendar" }),
       }),
       createTestService(defaultDashboardConfiguration, {
-        credentials: createMemoryCredentialStore(),
+        connections: createMemoryConnectionStore(),
       }),
     );
 
@@ -493,10 +508,10 @@ describe("integration authorization endpoint", () => {
   });
 });
 
-describe("revoking an integration's authorization", () => {
-  test("removing an integration through the dashboard-configuration endpoint drops its stored credential", async () => {
-    const credentials = createMemoryCredentialStore();
-    await credentials.set("team-calendar", "secret-token");
+describe("integration disconnect endpoint", () => {
+  test("destroys the caller's stored credential immediately and leaves the catalog entry intact", async () => {
+    const connections = createMemoryConnectionStore();
+    await connections.set(userInfo().username, "team-calendar", "secret-token");
     const service = createTestService(
       {
         ...defaultDashboardConfiguration,
@@ -504,20 +519,37 @@ describe("revoking an integration's authorization", () => {
           { id: "team-calendar", type: "google-calendar", settings: {} },
         ],
       },
-      { credentials },
+      { connections },
     );
 
-    const response = await handleDashboardConfigurationRequest(
-      new Request("http://dashboard/api/dashboard-configuration", {
+    const response = await handleIntegrationDisconnectRequest(
+      new Request("http://dashboard/api/integrations/disconnect", {
         method: "POST",
-        body: JSON.stringify([
-          { type: "remove-integration", integrationId: "team-calendar" },
-        ]),
+        body: JSON.stringify({ integrationId: "team-calendar" }),
       }),
       service,
     );
 
     expect(response.status).toBe(200);
-    await expect(credentials.get("team-calendar")).resolves.toBeUndefined();
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBeUndefined();
+    await expect(service.read("integrations")).resolves.toEqual([
+      { id: "team-calendar", type: "google-calendar", settings: {} },
+    ]);
+  });
+
+  test("requires an integrationId", async () => {
+    const response = await handleIntegrationDisconnectRequest(
+      new Request("http://dashboard/api/integrations/disconnect", {
+        method: "POST",
+        body: JSON.stringify({}),
+      }),
+      createTestService(defaultDashboardConfiguration, {
+        connections: createMemoryConnectionStore(),
+      }),
+    );
+
+    expect(response.status).toBe(400);
   });
 });

@@ -7,7 +7,7 @@ import {
   loadReadableDashboard,
 } from "./dashboard-configuration-client";
 import {
-  authorizeIntegration,
+  connectIntegration,
   loadConnectableIntegrationTypes,
   refreshIntegrations,
 } from "./integrations-client";
@@ -172,7 +172,7 @@ export function App() {
           callerRole={callerRole}
           connectableTypes={connectableTypes}
           onSave={saveMutations}
-          onAuthorize={authorizeIntegration}
+          onConnect={connectIntegration}
         />
       </details>
     </>

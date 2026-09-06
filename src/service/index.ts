@@ -5,7 +5,7 @@ import { userInfo } from "node:os";
 
 import type { AuthStore } from "../auth";
 import { isLocalUserToken } from "../auth/local-user";
-import type { CredentialStore } from "../server/integrations/credentials";
+import type { ConnectionStore } from "../server/integrations/connections";
 import {
   dynamicIntegrationEntry,
   type IntegrationCatalog,
@@ -63,7 +63,7 @@ export type ServiceFailureCode =
   | "unknown-id"
   | "duplicate-id"
   | "in-use"
-  | "credentials-unavailable"
+  | "connections-unavailable"
   | "queries-unavailable"
   | "invalid-card-template";
 
@@ -119,8 +119,8 @@ export type ReadableConfiguration = Partial<DashboardConfiguration> & {
 interface Dependencies {
   persistence: DashboardPersistence;
   authStore?: AuthStore;
-  /** Where an integration's authorization secret lives — see `CredentialStore` (D16). */
-  credentials?: CredentialStore;
+  /** Where a user's connection credentials live — see `ConnectionStore` (D28, D40, #88). */
+  connections?: ConnectionStore;
   /** Where each user's own queries live — a query belongs to the user who supplied it, never to a card (D32). */
   queries?: UserQueryStore;
   /** The service types this build can pull from — how a caller learns what may be connected. */
@@ -169,19 +169,26 @@ export interface DashboardService {
     credential?: string,
   ): Promise<ReadScopes["all"]>;
   /**
-   * The authorization handoff for one connection (D16): stores its secret
-   * outside dashboard configuration. Not a mutation — a credential never
-   * enters `DashboardConfiguration` or a read projection (`contract`
+   * The live credential handoff for connecting the caller's own account to
+   * one catalog entry (D14, D28, D40): stores the secret outside dashboard
+   * configuration and the offline queue. Not a mutation — a credential
+   * never enters `DashboardConfiguration` or a read projection (`contract`
    * already refuses a credential-shaped `integration.settings` key; this
-   * keeps the same promise for the store `apply` never touches). Gated at
-   * `integrations: edit` — the connection already exists via
-   * `add-integration`; authorizing it changes something that exists (D20).
+   * keeps the same promise for the store `apply` never touches). Ungated
+   * (D35) — a user's own connection is theirs by structure, keyed by the
+   * resolved caller and the catalog entry, never by a permission check.
    */
-  authorize(
-    connectionId: string,
+  connect(
+    catalogEntryId: string,
     connectionCredential: string,
     credential?: string,
   ): Promise<void>;
+  /**
+   * The matching live handoff for disconnecting: destroys the caller's own
+   * stored credential for that catalog entry immediately and leaves the
+   * entry itself intact (D40). Ungated for the same reason `connect` is.
+   */
+  disconnect(catalogEntryId: string, credential?: string): Promise<void>;
   /** The services this build can connect to. Gated at `integrations: read`. */
   connectableTypes(credential?: string): Promise<string[]>;
   /**
@@ -230,15 +237,17 @@ export function createService(dependencies: Dependencies): DashboardService {
       enqueue(() => readState(dependencies, scope, credential)),
     apply: (mutations, credential) =>
       enqueue(() => applyMutations(dependencies, mutations, credential)),
-    authorize: (connectionId, connectionCredential, credential) =>
+    connect: (catalogEntryId, connectionCredential, credential) =>
       enqueue(() =>
-        authorizeConnection(
+        connectIntegration(
           dependencies,
-          connectionId,
+          catalogEntryId,
           connectionCredential,
           credential,
         ),
       ),
+    disconnect: (catalogEntryId, credential) =>
+      enqueue(() => disconnectIntegration(dependencies, catalogEntryId, credential)),
     connectableTypes: (credential) =>
       enqueue(() => readConnectableTypes(dependencies, credential)),
     addQuery: (query, credential) =>
@@ -537,16 +546,20 @@ async function applyMutations(
     throw error;
   }
 
-  // Revoking an integration's authorization rides along with removing it
-  // (D16) — there is no "disconnect without removing" action to hang a
-  // separate revoke on, and it fires here so every caller of `apply` gets
-  // it, not just the ones that happen to go through one adapter.
+  // Removing a catalog entry destroys every user's stored connection for it
+  // (D40) — not just one caller's, since a connection is now keyed by user
+  // and catalog entry rather than by entry alone. This is the superset of
+  // the single-key credential revoke this replaced; #93 adds a gate in
+  // front of removal itself (a dependency warning and explicit override)
+  // but does not own the destruction that follows a removal that proceeds.
   //
-  // ponytail: after the write, so a failed revoke orphans the secret of an
-  // integration that is already gone. Re-authorizing then removing it again
-  // clears it. Make the pair atomic if a credential store ever fails often
-  // enough to matter.
-  if (dependencies.credentials) {
+  // ponytail: after the write, so a failed destroy orphans an already-gone
+  // entry's connections rather than the reverse. Recovers by retrying —
+  // `removeAllForEntry` is idempotent, and a stray connection for a
+  // nonexistent entry is inert (no `catalogEntryId` will ever match it
+  // again) until the retry clears it. Make the pair atomic if this ever
+  // fails often enough to matter.
+  if (dependencies.connections) {
     const removed = mutations.filter(
       (
         mutation,
@@ -555,7 +568,7 @@ async function applyMutations(
     );
     await Promise.all(
       removed.map((mutation) =>
-        dependencies.credentials!.remove(mutation.integrationId),
+        dependencies.connections!.removeAllForEntry(mutation.integrationId),
       ),
     );
   }
@@ -573,32 +586,51 @@ async function applyMutations(
   );
 }
 
-async function authorizeConnection(
+function requireConnectionStore(dependencies: Dependencies): ConnectionStore {
+  if (!dependencies.connections) {
+    throw new ServiceFailure(
+      "connections-unavailable",
+      "Connection storage is not configured",
+    );
+  }
+  return dependencies.connections;
+}
+
+async function connectIntegration(
   dependencies: Dependencies,
-  connectionId: string,
+  catalogEntryId: string,
   connectionCredential: string,
   credential: string | undefined,
 ): Promise<void> {
   const configuration = await readConfiguration(dependencies.persistence);
   const integrations = await readIntegrations(dependencies, configuration);
-  const caller = await resolveCaller(dependencies, credential);
-  const role = caller.role;
-  requireLevel(role, "integrations", "edit");
+  // A connection is keyed by user and catalog entry (D40, #88), never by
+  // catalog entry alone — the caller resolved here is always that user.
+  const user = await requireOwner(dependencies, credential, "a connection");
 
-  if (!integrations.some(({ id }) => id === connectionId)) {
+  if (!integrations.some(({ id }) => id === catalogEntryId)) {
     throw new ServiceFailure(
       "unknown-id",
-      `Unknown integration: ${connectionId}`,
+      `Unknown integration: ${catalogEntryId}`,
     );
   }
 
-  if (!dependencies.credentials) {
-    throw new ServiceFailure(
-      "credentials-unavailable",
-      "Credential storage is not configured",
-    );
-  }
-  await dependencies.credentials.set(connectionId, connectionCredential);
+  await requireConnectionStore(dependencies).set(
+    user,
+    catalogEntryId,
+    connectionCredential,
+  );
+}
+
+async function disconnectIntegration(
+  dependencies: Dependencies,
+  catalogEntryId: string,
+  credential: string | undefined,
+): Promise<void> {
+  // Ungated like `connectIntegration` (D35): destroys only the caller's own
+  // credential and leaves the shared catalog entry untouched (D40).
+  const user = await requireOwner(dependencies, credential, "a connection");
+  await requireConnectionStore(dependencies).remove(user, catalogEntryId);
 }
 
 async function readConnectableTypes(
@@ -632,12 +664,13 @@ function requireQueryStore(dependencies: Dependencies): UserQueryStore {
 async function requireOwner(
   dependencies: Dependencies,
   credential: string | undefined,
+  owns = "a query",
 ): Promise<string> {
   const caller = await resolveCaller(dependencies, credential);
   if (!caller.user) {
     throw new ServiceFailure(
       "permission-denied",
-      "No caller identity to own a query",
+      `No caller identity to own ${owns}`,
     );
   }
   return caller.user;

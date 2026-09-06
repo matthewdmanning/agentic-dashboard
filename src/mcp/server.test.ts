@@ -1,6 +1,6 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -14,7 +14,7 @@ import {
   type DashboardPersistence,
   type DashboardService,
 } from "../service";
-import type { CredentialStore } from "../server/integrations/credentials";
+import type { ConnectionStore } from "../server/integrations/connections";
 import { createDashboardMcpServer } from "./server";
 
 function createMemoryPersistence(
@@ -29,15 +29,22 @@ function createMemoryPersistence(
   };
 }
 
-function createMemoryCredentialStore(): CredentialStore {
+/** Keyed by user and catalog entry (D40, #88); MCP runs as the local user, so tests key by that username. */
+function createMemoryConnectionStore(): ConnectionStore {
   const values = new Map<string, string>();
+  const key = (user: string, catalogEntryId: string) => `${user} ${catalogEntryId}`;
   return {
-    get: async (id) => values.get(id),
-    set: async (id, credential) => {
-      values.set(id, credential);
+    get: async (user, catalogEntryId) => values.get(key(user, catalogEntryId)),
+    set: async (user, catalogEntryId, credential) => {
+      values.set(key(user, catalogEntryId), credential);
     },
-    remove: async (id) => {
-      values.delete(id);
+    remove: async (user, catalogEntryId) => {
+      values.delete(key(user, catalogEntryId));
+    },
+    removeAllForEntry: async (catalogEntryId) => {
+      for (const existingKey of [...values.keys()]) {
+        if (existingKey.endsWith(` ${catalogEntryId}`)) values.delete(existingKey);
+      }
     },
   };
 }
@@ -45,7 +52,7 @@ function createMemoryCredentialStore(): CredentialStore {
 function createTestService(
   initial: DashboardConfiguration = defaultDashboardConfiguration,
   extra: {
-    credentials?: CredentialStore;
+    connections?: ConnectionStore;
     connectableTypes?: string[];
     localUser?: Role;
     cardTemplateManifestPath?: string;
@@ -115,7 +122,8 @@ describe("dashboard MCP server", () => {
         "add-integration",
         "edit-integration",
         "remove-integration",
-        "authorize-integration",
+        "connect-integration",
+        "disconnect-integration",
       ]),
     );
   });
@@ -272,9 +280,11 @@ describe("dashboard MCP server", () => {
   });
 });
 
-describe("integration authorization through MCP", () => {
-  test("authorizes a connection through the same enforcement point as the HTTP adapter", async () => {
-    const credentials = createMemoryCredentialStore();
+describe("integration connections through MCP", () => {
+  const localUsername = userInfo().username;
+
+  test("connects an account through the same enforcement point as the HTTP adapter", async () => {
+    const connections = createMemoryConnectionStore();
     const client = await connectClient(
       createTestService(
         {
@@ -283,54 +293,23 @@ describe("integration authorization through MCP", () => {
             { id: "team-calendar", type: "google-calendar", settings: {} },
           ],
         },
-        { credentials },
+        { connections },
       ),
     );
 
     const result = await client.callTool({
-      name: "authorize-integration",
+      name: "connect-integration",
       arguments: { integrationId: "team-calendar", credential: "secret-token" },
     });
 
     expect(result.isError).toBeFalsy();
-    await expect(credentials.get("team-calendar")).resolves.toBe(
-      "secret-token",
-    );
+    await expect(
+      connections.get(localUsername, "team-calendar"),
+    ).resolves.toBe("secret-token");
   });
 
-  test("a role below integrations: edit is refused, the same as through HTTP", async () => {
-    const credentials = createMemoryCredentialStore();
-    const client = await connectClient(
-      createTestService(defaultDashboardConfiguration, {
-        credentials,
-        localUser: {
-          name: "localUser",
-          permissions: {
-            data: "write",
-            cards: "write",
-            presentation: "write",
-            integrations: "read",
-            roles: "noAccess",
-          },
-        },
-      }),
-    );
-
-    const result = await client.callTool({
-      name: "authorize-integration",
-      arguments: { integrationId: "team-calendar", credential: "secret-token" },
-    });
-
-    expect(result.isError).toBe(true);
-    expect(result.structuredContent).toMatchObject({
-      code: "permission-denied",
-    });
-    await expect(credentials.get("team-calendar")).resolves.toBeUndefined();
-  });
-
-  test("removing an integration through MCP leaves no credential behind", async () => {
-    const credentials = createMemoryCredentialStore();
-    await credentials.set("team-calendar", "secret-token");
+  test("a role with no integrations access still connects, unlike a real permission-gated mutation (D35)", async () => {
+    const connections = createMemoryConnectionStore();
     const client = await connectClient(
       createTestService(
         {
@@ -339,16 +318,56 @@ describe("integration authorization through MCP", () => {
             { id: "team-calendar", type: "google-calendar", settings: {} },
           ],
         },
-        { credentials },
+        {
+          connections,
+          localUser: {
+            name: "localUser",
+            permissions: {
+              data: "write",
+              cards: "write",
+              presentation: "write",
+              integrations: "noAccess",
+              roles: "noAccess",
+            },
+          },
+        },
       ),
     );
 
     const result = await client.callTool({
-      name: "remove-integration",
+      name: "connect-integration",
+      arguments: { integrationId: "team-calendar", credential: "secret-token" },
+    });
+
+    expect(result.isError).toBeFalsy();
+    await expect(
+      connections.get(localUsername, "team-calendar"),
+    ).resolves.toBe("secret-token");
+  });
+
+  test("disconnecting through MCP leaves no credential behind, and leaves the integration in place", async () => {
+    const connections = createMemoryConnectionStore();
+    await connections.set(localUsername, "team-calendar", "secret-token");
+    const client = await connectClient(
+      createTestService(
+        {
+          ...defaultDashboardConfiguration,
+          integrations: [
+            { id: "team-calendar", type: "google-calendar", settings: {} },
+          ],
+        },
+        { connections },
+      ),
+    );
+
+    const result = await client.callTool({
+      name: "disconnect-integration",
       arguments: { integrationId: "team-calendar" },
     });
 
     expect(result.isError).toBeFalsy();
-    await expect(credentials.get("team-calendar")).resolves.toBeUndefined();
+    await expect(
+      connections.get(localUsername, "team-calendar"),
+    ).resolves.toBeUndefined();
   });
 });
