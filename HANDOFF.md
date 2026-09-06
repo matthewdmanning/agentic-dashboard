@@ -72,9 +72,3 @@ card template lands. Zero are wired in today.
 Phase 2 (user identity, queries in user data, the card mapper store, credential
 storage) must precede Phase 3 (per-user appearance), because everything in
 Phase 3 is keyed to a user that does not exist in the code yet.
-
-## One operational note
-
-The local checkout is still `C:\GitHub\react-aria-dashboard`. If you rename it,
-rename the Claude memory directory `C--GitHub-react-aria-dashboard` in the same
-move, and do it between sessions — project memory is keyed to the absolute path.

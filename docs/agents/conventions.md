@@ -10,7 +10,7 @@ If a concept you need is missing from the glossary, that is a signal: either the
 
 ## Style
 
-TypeScript for application code. React Aria Components for accessible complex controls. Presentational classes draw only from the declared component library's vocabulary (D23) — never arbitrary CSS.
+TypeScript for application code. Presentational classes draw only from the declared component library's vocabulary (D23) — never arbitrary CSS.
 
 `PascalCase` for React components, `camelCase` for functions and variables, kebab-case for documentation filenames. Prettier owns formatting — run `npm run format:check`.
 

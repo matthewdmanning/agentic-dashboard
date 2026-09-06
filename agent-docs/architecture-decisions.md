@@ -65,19 +65,13 @@ Rejected: role checks on agent calls only, with client endpoints left human-trus
 
 ### D6 — Module cut
 
-Seven modules:
+The application is cut into seven modules. The map — which module owns what — is
+in [`ARCHITECTURE.md`](../ARCHITECTURE.md), and lives there alone.
 
-| Module           | Owns                                                                                                                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `contract`       | Dashboard configuration shape and validation, mutation types, card mapper compilation, card template schemas, role bundle shape. No React, no Node — imported by every other module. |
-| `service`        | The one interface. Role resolution and enforcement, persistence, applying mutations.                                                                                                 |
-| `auth`           | Accounts, credentials, account-to-role resolution. Separate store from dashboard data.                                                                                               |
-| `integrations`   | Optional, user-authorized external-service connections, and backup targets.                                                                                                          |
-| `view`           | React application: rendering, Settings, offline cache, mutation queue, toast.                                                                                                        |
-| `card-templates` | Card template components, paired with their schemas from `contract`. Split out on change cadence: they change when a template is added, not when the service surface moves.          |
-| `mcp`            | Tool definitions. Calls `service`.                                                                                                                                                   |
-
-`contract` is React-free by construction, since card template components live in `card-templates`.
+What this decision settles is the cut itself: `card-templates` is separate from
+`contract` on change cadence, since templates change when one is added rather
+than when the service surface moves, and that separation is what keeps
+`contract` React-free by construction.
 
 ### D8 — A card is placement-free
 
