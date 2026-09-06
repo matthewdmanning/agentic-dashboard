@@ -130,6 +130,21 @@ export interface CardTemplateBuildPaths {
   clientBuildPath: string;
 }
 
+/**
+ * A build that has already validated, compiled its schemas, and type-checked
+ * clean. Nothing is at `manifestPath`/`clientBuildPath` yet — the caller
+ * decides when (`commit`) or whether (`discard`) that happens, the same
+ * two-phase shape `typecheckCardTemplateSources` uses for tracked source, so
+ * a mutation batch with other work left to do can still unwind cleanly
+ * (D39). Temp files are named per attempt (not derived from `paths`), so a
+ * discarded or still-pending prepare never collides with a later one aimed
+ * at the same paths.
+ */
+export interface PreparedCardTemplatePromotion {
+  commit(): Promise<void>;
+  discard(): Promise<void>;
+}
+
 export type CardTemplateBuildResult =
   | {
       ok: true;
@@ -138,29 +153,61 @@ export type CardTemplateBuildResult =
     }
   | { ok: false; stage: "validate" | "schema" | "typecheck"; message: string };
 
+export type PreparedCardTemplateBuildResult =
+  | ({ ok: true; prepared: PreparedCardTemplatePromotion } & Pick<
+      Extract<CardTemplateBuildResult, { ok: true }>,
+      "manifest" | "clientBuild"
+    >)
+  | Extract<CardTemplateBuildResult, { ok: false }>;
+
 /**
- * Serializes builds so concurrent promotions cannot interleave their
- * generated files, and one mutation batch causes at most one rebuild (D39).
- * Each caller still gets its own result — a later call simply waits its turn.
+ * Serializes the validate/schema/typecheck/stage work so concurrent builds
+ * cannot interleave, and one mutation batch causes at most one rebuild
+ * (D39). The queue slot is released once staging finishes — `commit`/
+ * `discard` run outside it, since a caller may hold a prepared result open
+ * for as long as the rest of its own mutation batch takes.
  */
 let buildQueue: Promise<unknown> = Promise.resolve();
 
-export function promoteCardTemplates(
+/**
+ * Validates, compiles JSON Schemas, type-checks, and stages a complete
+ * manifest + client build for the given candidates — the one build pipeline,
+ * used by both the deferred and immediate entry points below. Returns a
+ * `commit`/`discard` pair rather than promoting directly, so a caller that
+ * still has other mutations to apply can wait for those to succeed first.
+ */
+export function prepareCardTemplatePromotion(
   candidates: readonly CardTemplateCandidate[],
   paths: CardTemplateBuildPaths,
-): Promise<CardTemplateBuildResult> {
+): Promise<PreparedCardTemplateBuildResult> {
   const run = buildQueue.then(
-    () => build(candidates, paths),
-    () => build(candidates, paths),
+    () => stage(candidates, paths),
+    () => stage(candidates, paths),
   );
   buildQueue = run.catch(() => undefined);
   return run;
 }
 
-async function build(
+/**
+ * Convenience entry point for a caller with nothing else to wait for (project
+ * initialization, the one candidate set it ever builds): stages and commits
+ * immediately. Built on `prepareCardTemplatePromotion` rather than a second
+ * implementation of the same pipeline.
+ */
+export async function promoteCardTemplates(
   candidates: readonly CardTemplateCandidate[],
   paths: CardTemplateBuildPaths,
 ): Promise<CardTemplateBuildResult> {
+  const result = await prepareCardTemplatePromotion(candidates, paths);
+  if (!result.ok) return result;
+  await result.prepared.commit();
+  return { ok: true, manifest: result.manifest, clientBuild: result.clientBuild };
+}
+
+async function stage(
+  candidates: readonly CardTemplateCandidate[],
+  paths: CardTemplateBuildPaths,
+): Promise<PreparedCardTemplateBuildResult> {
   const names = candidates.map((candidate) => candidate.name);
   if (new Set(names).size !== names.length) {
     return {
@@ -225,35 +272,34 @@ async function build(
     })),
   };
 
-  // Built away from the active generation above; only now, with a complete
-  // successful build in hand, are manifest and client build promoted
-  // together (D39) — both temp files are written before either is renamed,
-  // so nothing that can fail happens between the two renames.
-  await writeJsonAtomicPair(
-    { path: paths.manifestPath, value: manifest },
-    { path: paths.clientBuildPath, value: clientBuild },
+  // Staged away from the active generation above, under temp names unique to
+  // this attempt (not derived from `paths`) so a prepare that's discarded, or
+  // still pending a caller's decision, can never collide with another build
+  // aimed at the same paths. Only `commit` renames into the real paths —
+  // both together, so manifest and client build are never promoted apart.
+  const manifestTempPath = `${paths.manifestPath}.tmp-${randomUUID()}`;
+  const clientBuildTempPath = `${paths.clientBuildPath}.tmp-${randomUUID()}`;
+  await mkdir(dirname(paths.manifestPath), { recursive: true });
+  await mkdir(dirname(paths.clientBuildPath), { recursive: true });
+  await writeFile(manifestTempPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  await writeFile(
+    clientBuildTempPath,
+    `${JSON.stringify(clientBuild, null, 2)}\n`,
   );
 
-  return { ok: true, manifest, clientBuild };
-}
-
-/** Copied from `src/server/integrations/catalog.ts` — the one atomic-write pattern this project uses, extended to promote a pair together. */
-async function writeJsonAtomicPair(
-  a: { path: string; value: unknown },
-  b: { path: string; value: unknown },
-): Promise<void> {
-  await mkdir(dirname(a.path), { recursive: true });
-  await mkdir(dirname(b.path), { recursive: true });
-  const aTemp = `${a.path}.tmp`;
-  const bTemp = `${b.path}.tmp`;
-  try {
-    await writeFile(aTemp, `${JSON.stringify(a.value, null, 2)}\n`);
-    await writeFile(bTemp, `${JSON.stringify(b.value, null, 2)}\n`);
-    await rename(aTemp, a.path);
-    await rename(bTemp, b.path);
-  } catch (error) {
-    await unlink(aTemp).catch(() => undefined);
-    await unlink(bTemp).catch(() => undefined);
-    throw error;
-  }
+  return {
+    ok: true,
+    manifest,
+    clientBuild,
+    prepared: {
+      commit: async () => {
+        await rename(manifestTempPath, paths.manifestPath);
+        await rename(clientBuildTempPath, paths.clientBuildPath);
+      },
+      discard: async () => {
+        await unlink(manifestTempPath).catch(() => undefined);
+        await unlink(clientBuildTempPath).catch(() => undefined);
+      },
+    },
+  };
 }

@@ -1,5 +1,6 @@
 import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
-import { readFile, unlink } from "node:fs/promises";
+import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -47,12 +48,25 @@ function createTestService(
     credentials?: CredentialStore;
     connectableTypes?: string[];
     localUser?: Role;
+    cardTemplateManifestPath?: string;
+    cardTemplateClientBuildPath?: string;
   } = {},
 ): DashboardService {
   return createService({
     persistence: createMemoryPersistence(initial),
     ...extra,
   });
+}
+
+/** Isolates a test's promoted manifest/client build from every other test's, and from the workspace default. Seeded empty, not absent, so it never falls back to the compiled default's fixture templates. */
+async function temporaryCardTemplatePaths() {
+  const dir = await mkdtemp(join(tmpdir(), "mcp-card-template-"));
+  const cardTemplateManifestPath = join(dir, "manifest.json");
+  await writeFile(cardTemplateManifestPath, "{}\n");
+  return {
+    cardTemplateManifestPath,
+    cardTemplateClientBuildPath: join(dir, "client-build.json"),
+  };
 }
 
 /**
@@ -191,7 +205,7 @@ describe("dashboard MCP server", () => {
     });
   });
 
-  test("assembles a card template from a composition tree", async () => {
+  test("assembles a card template from a name, a JSON Schema, and a composition tree", async () => {
     const templatePath = join(
       process.cwd(),
       "src",
@@ -199,41 +213,49 @@ describe("dashboard MCP server", () => {
       "cards",
       "__mcp-test-assembled.tsx",
     );
-    const client = await connectClient(createTestService());
+    const client = await connectClient(
+      createTestService(defaultDashboardConfiguration, {
+        ...(await temporaryCardTemplatePaths()),
+      }),
+    );
 
     try {
       const result = await client.callTool({
         name: "assemble-card-template",
         arguments: {
           template: "__mcp-test-assembled",
-          composition: { component: "Text", props: {}, children: [] },
+          jsonSchema: { type: "object", properties: {}, additionalProperties: false },
+          composition: { component: "Badge", props: {}, children: [] },
         },
       });
 
       expect(result.isError).toBeFalsy();
       const source = await readFile(templatePath, "utf8");
-      expect(source).toContain(
-        'import { Text } from "react-aria-components"',
-      );
+      expect(source).toContain('import { Badge } from "@/components/ui/badge"');
     } finally {
       await unlink(templatePath).catch(() => undefined);
     }
   });
 
   test("an invalid composition tree surfaces the service's failure code", async () => {
-    const client = await connectClient(createTestService());
+    const client = await connectClient(
+      createTestService(defaultDashboardConfiguration, {
+        ...(await temporaryCardTemplatePaths()),
+      }),
+    );
 
     const result = await client.callTool({
       name: "assemble-card-template",
       arguments: {
         template: "__mcp-test-invalid",
+        jsonSchema: { type: "object", properties: {}, additionalProperties: false },
         composition: { component: "NotARealComponent", props: {}, children: [] },
       },
     });
 
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toMatchObject({
-      code: "invalid-composition",
+      code: "invalid-card-template",
     });
   });
 

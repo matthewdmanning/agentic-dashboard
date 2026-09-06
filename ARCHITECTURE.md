@@ -52,7 +52,7 @@ The module map above is the target cut. The rewrite lands issue by issue, so par
 
 **Zero card templates are wired in right now — a state of this rewrite, not a gap in the design.** The five that shipped were deleted (D32) and their shadcn replacements are not written, so `cardTemplateSchemas` is empty, the default configuration holds no card, the registry serves an empty index, and a running dashboard renders nothing. Their schemas were kept for tests at `src/test-support/card-template.ts`. Writing one is ordinary work against a mechanism that is already here.
 
-Further gaps between the decisions and the tree: the assembler still emits a bare `.tsx` rather than the registry item D32 calls for; `react-aria-components` is still declared and still what that assembler generates against; a card still carries its queries and each query its own inline mapper, under the old name `formatter`; and `fontScale` still sits in dashboard configuration. [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the full list, phased.
+Further gaps between the decisions and the tree: a card still carries its queries and each query its own inline mapper, under the old name `formatter`; and `fontScale` still sits in dashboard configuration. [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the full list, phased.
 
 Delete this section when the last module lands.
 

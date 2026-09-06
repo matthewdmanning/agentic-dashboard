@@ -134,13 +134,12 @@ export type FormatterSpec = z.infer<typeof formatterSpecSchema>;
 type FieldSpec = z.infer<typeof fieldSpecSchema>;
 
 /**
- * A card template's component as data (D22): a tree of real
- * `react-aria-components` exports the service can turn into real source.
- * Structural only — no enum of component names, no per-component prop
- * schema (an earlier draft duplicated the library's own types and drifted;
- * `tsc --noEmit` on the assembled output is the correctness check, not this
- * schema). Same reasoning as `formatterSpecSchema`: closed on shape, open
- * on domain fields.
+ * A card template's component as data (D22): a tree of real shadcn/ui
+ * component exports the service can turn into real source. Structural only —
+ * no enum of component names, no per-component prop schema (an earlier draft
+ * duplicated the library's own types and drifted; `tsc --noEmit` on the
+ * assembled output is the correctness check, not this schema). Same
+ * reasoning as `formatterSpecSchema`: closed on shape, open on domain fields.
  */
 export interface CompositionNode {
   component: string;
@@ -325,6 +324,10 @@ const assembleCardTemplateMutationSchema = z
     // Becomes a filesystem path segment in `service` — no path separators,
     // no `.`, so it can't traverse out of the card-templates directory.
     template: z.string().regex(/^[A-Za-z0-9_-]+$/),
+    // Mandatory (D22): the state a template displays is validated by this
+    // schema, not inferred from the composition. Structural validity — is it
+    // a compilable JSON Schema — is checked later, at the build seam.
+    jsonSchema: z.record(z.string(), z.unknown()),
     composition: compositionNodeSchema,
   })
   .strict();

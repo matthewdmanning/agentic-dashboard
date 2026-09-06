@@ -139,14 +139,25 @@ describe("compositionNodeSchema", () => {
 });
 
 describe("assemble-card-template mutation", () => {
-  test("parses given a composition tree", () => {
+  test("parses given a name, a JSON Schema, and a composition tree", () => {
     expect(
+      mutationSchema.parse({
+        type: "assemble-card-template",
+        template: "eisenhower",
+        jsonSchema: { type: "object", properties: {}, additionalProperties: false },
+        composition: { component: "Flex", props: {}, children: [] },
+      }),
+    ).toMatchObject({ type: "assemble-card-template" });
+  });
+
+  test("rejects a missing JSON Schema", () => {
+    expect(() =>
       mutationSchema.parse({
         type: "assemble-card-template",
         template: "eisenhower",
         composition: { component: "Flex", props: {}, children: [] },
       }),
-    ).toMatchObject({ type: "assemble-card-template" });
+    ).toThrow();
   });
 });
 

@@ -1,7 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { userInfo } from "node:os";
-import { randomUUID } from "node:crypto";
 
 import type { AuthStore } from "../auth";
 import { isLocalUserToken } from "../auth/local-user";
@@ -14,9 +13,15 @@ import {
 import { connectableTypesFromCatalog } from "../server/integrations/catalog-queries";
 import { generateComponentSource } from "../card-templates/codegen";
 import {
-  typecheckCardTemplateSources,
+  prepareCardTemplatePromotion,
+  type CardTemplateCandidate,
   type PreparedCardTemplateFiles,
 } from "../card-templates/build";
+import {
+  defaultCardTemplateClientBuildPath,
+  defaultCardTemplateManifestPath,
+  readActiveCardTemplateManifest,
+} from "../card-templates/active-manifest";
 import {
   defaultDashboardConfiguration,
   localUser,
@@ -50,7 +55,7 @@ export type ServiceFailureCode =
   | "duplicate-id"
   | "in-use"
   | "credentials-unavailable"
-  | "invalid-composition";
+  | "invalid-card-template";
 
 export class ServiceFailure extends Error {
   constructor(
@@ -118,6 +123,10 @@ interface Dependencies {
   localUserToken?: string;
   /** Test seam for the local OS identity; production uses the running account. */
   localUserName?: string;
+  /** Where the active card-template manifest is read from and promoted to (D24, D39). Defaults to the workspace's `.dashboard/card-templates/manifest.json`. */
+  cardTemplateManifestPath?: string;
+  /** Pairs with `cardTemplateManifestPath` — the promoted client build. */
+  cardTemplateClientBuildPath?: string;
 }
 
 export interface AuthenticatedCaller {
@@ -371,12 +380,13 @@ async function applyMutations(
   }
 
   // Real filesystem writes, unlike the in-memory mutations below. Every
-  // composition in the batch is generated and type-checked up front — but
-  // not committed into tracked source until the rest of the batch (in-memory
-  // mutations, config persistence) has also succeeded, so a
-  // `remove-card`/`add-card`-style failure elsewhere in the same batch can't
-  // leave a template file landed with no matching config write.
-  const prepared = await prepareAssembledCardTemplates(
+  // composition in the batch is validated, schema-compiled, and type-checked
+  // up front — but not promoted (manifest, client build, or tracked source)
+  // until the rest of the batch (in-memory mutations, config persistence)
+  // has also succeeded, so a `remove-card`/`add-card`-style failure
+  // elsewhere in the same batch can't leave a template half-landed.
+  const prepared = await applyAssembledCardTemplates(
+    dependencies,
     mutations.filter(
       (
         mutation,
@@ -640,9 +650,10 @@ function applyMutation(
       return;
     }
     case "assemble-card-template":
-      // Checked and renamed into src/client/cards/ above, before this loop
-      // runs — nothing left to change on the configuration itself (#76
-      // registers the template's schema so cards can reference it).
+      // Built, type-checked, and promoted through build.ts's seam above,
+      // before this loop runs — nothing left to change on the configuration
+      // itself (#76 registers the template's schema so cards can reference
+      // it).
       return;
   }
 }
@@ -658,33 +669,85 @@ function toComponentName(template: string): string {
 }
 
 /**
- * Generates and type-checks every `assemble-card-template` mutation in the
- * batch as ONE build (D39 — one rebuild per mutation batch), delegating the
- * actual type-check to `card-templates/build.ts`, the one module that owns
- * it. Nothing is written to tracked source yet; the caller commits once the
- * rest of its own batch has also succeeded, or discards.
+ * Assembles a registry item (D22, D32) per `assemble-card-template` mutation
+ * and submits the *complete* candidate set — every currently active template
+ * plus the newly assembled ones — to `card-templates/build.ts`'s deferred
+ * seam, the one module that owns validation, type-checking, and promotion
+ * (D39). One rebuild per mutation batch, not one per template.
+ *
+ * Validation, schema compilation, and type-checking all run here, up front —
+ * a bad composition or schema throws before this returns. A valid one is
+ * only *staged*: nothing lands at the manifest, client build, or tracked
+ * source paths yet. The caller commits promotion and the new templates'
+ * tracked source **together**, once the rest of its own mutation batch has
+ * also succeeded, or discards both — so a sibling mutation failing later in
+ * the same batch can never leave a template half-landed.
  */
-async function prepareAssembledCardTemplates(
+async function applyAssembledCardTemplates(
+  dependencies: Dependencies,
   mutations: Extract<Mutation, { type: "assemble-card-template" }>[],
 ): Promise<PreparedCardTemplateFiles | undefined> {
   if (mutations.length === 0) return undefined;
-  await mkdir(cardTemplatesDir, { recursive: true });
-  const sources = mutations.map((mutation) => ({
-    finalPath: join(cardTemplatesDir, `${mutation.template}.tsx`),
-    source: generateComponentSource(
-      mutation.composition,
-      toComponentName(mutation.template),
-    ),
-  }));
-  const result = await typecheckCardTemplateSources(sources);
+
+  const manifestPath =
+    dependencies.cardTemplateManifestPath ?? defaultCardTemplateManifestPath();
+  const clientBuildPath =
+    dependencies.cardTemplateClientBuildPath ??
+    defaultCardTemplateClientBuildPath();
+  const activeManifest = await readActiveCardTemplateManifest(manifestPath);
+  const assembledNames = new Set(mutations.map(({ template }) => template));
+
+  const existingCandidates: CardTemplateCandidate[] = await Promise.all(
+    Object.values(activeManifest)
+      .filter((entry) => !assembledNames.has(entry.name))
+      .map(async (entry) => ({
+        name: entry.name,
+        title: entry.title,
+        sourceFile: entry.sourceFile,
+        clientSourcePath: `src/client/cards/${entry.sourceFile}`,
+        source: await readFile(join(cardTemplatesDir, entry.sourceFile), "utf8"),
+        jsonSchema: entry.jsonSchema,
+      })),
+  );
+
+  const assembledCandidates: CardTemplateCandidate[] = mutations.map(
+    (mutation) => ({
+      name: mutation.template,
+      title: mutation.template,
+      sourceFile: `${mutation.template}.tsx`,
+      clientSourcePath: `src/client/cards/${mutation.template}.tsx`,
+      source: generateComponentSource(
+        mutation.composition,
+        toComponentName(mutation.template),
+      ),
+      jsonSchema: mutation.jsonSchema,
+    }),
+  );
+
+  const result = await prepareCardTemplatePromotion(
+    [...existingCandidates, ...assembledCandidates],
+    { manifestPath, clientBuildPath },
+  );
   if (!result.ok) {
     const templates = mutations.map(({ template }) => `'${template}'`).join(", ");
     throw new ServiceFailure(
-      "invalid-composition",
-      `Composition tree for template(s) ${templates} failed to type-check: ${result.message}`,
+      "invalid-card-template",
+      `Card template(s) ${templates} failed to build (${result.stage}): ${result.message}`,
     );
   }
-  return result.prepared;
+
+  return {
+    commit: async () => {
+      await mkdir(cardTemplatesDir, { recursive: true });
+      await Promise.all(
+        assembledCandidates.map((candidate) =>
+          writeFile(join(cardTemplatesDir, candidate.sourceFile), candidate.source),
+        ),
+      );
+      await result.prepared.commit();
+    },
+    discard: () => result.prepared.discard(),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

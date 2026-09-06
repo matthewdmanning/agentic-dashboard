@@ -16,6 +16,10 @@ import {
 import { createFileCredentialStore } from "./integrations/credentials";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
 import { handleRegistryRequest } from "./registry";
+import {
+  defaultCardTemplateClientBuildPath,
+  defaultCardTemplateManifestPath,
+} from "../card-templates/active-manifest";
 import type { FetchCalendar } from "./integrations/google-calendar";
 import {
   refreshCardQueries,
@@ -75,7 +79,7 @@ const failureStatus: Record<ServiceFailureCode, number> = {
   "duplicate-id": 409,
   "in-use": 409,
   "credentials-unavailable": 500,
-  "invalid-composition": 422,
+  "invalid-card-template": 422,
 };
 
 function failureResponse(error: unknown): Response {
@@ -229,6 +233,12 @@ async function startServer() {
   const localUserTokenPath =
     process.env.DASHBOARD_LOCAL_USER_TOKEN_PATH ??
     join(workspace, ".dashboard", "local-user-token");
+  const cardTemplateManifestPath =
+    process.env.DASHBOARD_TEMPLATE_MANIFEST_PATH ??
+    defaultCardTemplateManifestPath(workspace);
+  const cardTemplateClientBuildPath =
+    process.env.DASHBOARD_CLIENT_BUILD_PATH ??
+    defaultCardTemplateClientBuildPath(workspace);
   // Loopback proves same machine, not same user (D35). The token file does —
   // only the OS account running this process can read it.
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
@@ -240,6 +250,8 @@ async function startServer() {
     credentials,
     catalog,
     localUserToken,
+    cardTemplateManifestPath,
+    cardTemplateClientBuildPath,
   });
   // Internal plumbing for the server's own outbound calls, not a caller-facing
   // operation -- reads the same store `service` composes, directly.
@@ -343,6 +355,7 @@ async function startServer() {
       try {
         const result = await handleRegistryRequest(
           new Request(`http://dashboard${request.url}`),
+          { manifestPath: cardTemplateManifestPath },
         );
         response.writeHead(result.status, Object.fromEntries(result.headers));
         response.end(Buffer.from(await result.arrayBuffer()));

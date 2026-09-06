@@ -3,6 +3,10 @@ import { dirname, join, resolve } from "node:path";
 
 import { defaultDashboardConfiguration } from "../contract";
 import { activeCardTemplateManifest } from "../card-templates/manifest";
+import {
+  defaultCardTemplateClientBuildPath,
+  defaultCardTemplateManifestPath,
+} from "../card-templates/active-manifest";
 import { promoteCardTemplates } from "../card-templates/build";
 import { createFilePersistence } from "../service";
 import { createFileIntegrationCatalog } from "../server/integrations/catalog";
@@ -38,10 +42,10 @@ async function main() {
     process.env.DASHBOARD_COMPONENTS_PATH ?? join(workspace, "components.json");
   const manifestPath =
     process.env.DASHBOARD_TEMPLATE_MANIFEST_PATH ??
-    join(workspace, ".dashboard", "card-templates", "manifest.json");
+    defaultCardTemplateManifestPath(workspace);
   const clientBuildPath =
     process.env.DASHBOARD_CLIENT_BUILD_PATH ??
-    join(workspace, ".dashboard", "card-templates", "client-build.json");
+    defaultCardTemplateClientBuildPath(workspace);
 
   if (
     await access(dashboardPath)

@@ -15,6 +15,15 @@ export interface CardTemplateManifestEntry {
   jsonSchema: JsonSchema;
 }
 
+/** A manifest entry as promoted to disk (D39) — no live Zod schema, since JSON survives a round trip and a `ZodType` does not. */
+export interface PromotedCardTemplateManifestEntry {
+  name: string;
+  type: "registry:block";
+  title: string;
+  sourceFile: string;
+  jsonSchema: JsonSchema;
+}
+
 /**
  * The active generation. Registry responses and the client card map both read
  * this manifest; a source-file scan or a second template-name list is not

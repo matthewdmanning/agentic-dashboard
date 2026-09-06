@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import { tmpdir, userInfo } from "node:os";
-import { mkdtemp, readFile, unlink } from "node:fs/promises";
+import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -22,14 +22,17 @@ import {
   withTestCard,
 } from "../test-support/card-template";
 
-// A call-through spy — real type-checking still runs — so batching can be
+// A call-through spy — the real build still runs — so batching can be
 // asserted on directly: one `assemble-card-template` batch must reach
-// `typecheckCardTemplateSources` exactly once, not once per mutation (D39).
+// `prepareCardTemplatePromotion` exactly once, not once per mutation (D39).
 vi.mock(import("../card-templates/build"), async (importOriginal) => {
   const actual = await importOriginal();
-  return { ...actual, typecheckCardTemplateSources: vi.fn(actual.typecheckCardTemplateSources) };
+  return {
+    ...actual,
+    prepareCardTemplatePromotion: vi.fn(actual.prepareCardTemplatePromotion),
+  };
 });
-import { typecheckCardTemplateSources } from "../card-templates/build";
+import { prepareCardTemplatePromotion } from "../card-templates/build";
 
 useTestCardTemplates();
 
@@ -435,9 +438,33 @@ describe("card template assembly", () => {
     "cards",
     "__test-assembled.tsx",
   );
+  const validJsonSchema = {
+    type: "object",
+    properties: {},
+    additionalProperties: false,
+  };
 
-  test("assembles a valid composition tree into tracked source", async () => {
-    const service = createService({ persistence: createMemoryPersistence() });
+  // Seeded with an empty active generation rather than left absent: absent
+  // would fall back to the compiled default `activeCardTemplateManifest`,
+  // which `useTestCardTemplates()` (above) points at fixture components not
+  // self-contained enough to survive a real re-typecheck (they import
+  // relative to their real tracked location, which a scoped check can't see).
+  // These tests are about assembly, not about re-validating fixtures.
+  async function temporaryCardTemplatePaths() {
+    const dir = await mkdtemp(join(tmpdir(), "assemble-card-template-"));
+    const cardTemplateManifestPath = join(dir, "manifest.json");
+    await writeFile(cardTemplateManifestPath, "{}\n");
+    return {
+      cardTemplateManifestPath,
+      cardTemplateClientBuildPath: join(dir, "client-build.json"),
+    };
+  }
+
+  test("assembles a name, JSON Schema, and composition tree into a promoted registry item", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...(await temporaryCardTemplatePaths()),
+    });
 
     try {
       await expect(
@@ -445,28 +472,75 @@ describe("card template assembly", () => {
           {
             type: "assemble-card-template",
             template: "__test-assembled",
-            composition: { component: "Text", props: {}, children: [] },
+            jsonSchema: validJsonSchema,
+            composition: { component: "Badge", props: {}, children: [] },
           },
         ]),
       ).resolves.toBeDefined();
 
       const source = await readFile(templatePath, "utf8");
-      expect(source).toContain(
-        'import { Text } from "react-aria-components"',
-      );
+      expect(source).toContain('import { Badge } from "@/components/ui/badge"');
     } finally {
       await unlink(templatePath).catch(() => undefined);
     }
   });
 
-  test("fails before writing when the tree does not type-check", async () => {
-    const service = createService({ persistence: createMemoryPersistence() });
+  test("rejects a missing JSON Schema before anything is built", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...(await temporaryCardTemplatePaths()),
+    });
 
     await expect(
       service.apply([
         {
           type: "assemble-card-template",
           template: "__test-assembled",
+          composition: { component: "Badge", props: {}, children: [] },
+        } as unknown as Mutation,
+      ]),
+    ).rejects.toThrow();
+
+    await expect(readFile(templatePath, "utf8")).rejects.toThrow();
+  });
+
+  test("refuses a caller without cards: write", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...(await temporaryCardTemplatePaths()),
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "read",
+        presentation: "write",
+        integrations: "write",
+        roles: "noAccess",
+      }),
+    });
+
+    await expect(
+      service.apply([
+        {
+          type: "assemble-card-template",
+          template: "__test-assembled",
+          jsonSchema: validJsonSchema,
+          composition: { component: "Badge", props: {}, children: [] },
+        },
+      ]),
+    ).rejects.toThrow("cards: write");
+
+    await expect(readFile(templatePath, "utf8")).rejects.toThrow();
+  });
+
+  test("fails before promotion when the tree does not type-check", async () => {
+    const paths = await temporaryCardTemplatePaths();
+    const service = createService({ persistence: createMemoryPersistence(), ...paths });
+
+    await expect(
+      service.apply([
+        {
+          type: "assemble-card-template",
+          template: "__test-assembled",
+          jsonSchema: validJsonSchema,
           composition: {
             component: "NotARealComponent",
             props: {},
@@ -474,37 +548,68 @@ describe("card template assembly", () => {
           },
         },
       ]),
-    ).rejects.toThrow("failed to type-check");
+    ).rejects.toThrow("failed to build");
 
     await expect(readFile(templatePath, "utf8")).rejects.toThrow();
+    // The prior generation — here, none — stays byte-for-byte active.
+    await expect(readFile(paths.cardTemplateManifestPath, "utf8")).resolves.toBe(
+      "{}\n",
+    );
   });
 
   test("fails a real component given a wrong prop type, not just an unknown one", async () => {
     // Unlike the unknown-component case above (which fails on the import
     // line before JSX is even checked), this proves the scoped tsconfig
-    // still runs full prop typechecking against react-aria-components' real
+    // still runs full prop typechecking against shadcn/ui's real component
     // types — the whole point of dropping the per-component registry (D22).
-    const service = createService({ persistence: createMemoryPersistence() });
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...(await temporaryCardTemplatePaths()),
+    });
 
     await expect(
       service.apply([
         {
           type: "assemble-card-template",
           template: "__test-assembled",
+          jsonSchema: validJsonSchema,
           composition: {
-            component: "Heading",
-            props: { level: "two" },
+            component: "Card",
+            props: { size: "huge" },
             children: [],
           },
         },
       ]),
-    ).rejects.toThrow("failed to type-check");
+    ).rejects.toThrow("failed to build");
+
+    await expect(readFile(templatePath, "utf8")).rejects.toThrow();
+  });
+
+  test("fails before promotion when the JSON Schema does not compile", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...(await temporaryCardTemplatePaths()),
+    });
+
+    await expect(
+      service.apply([
+        {
+          type: "assemble-card-template",
+          template: "__test-assembled",
+          jsonSchema: { type: "not-a-real-type" },
+          composition: { component: "Badge", props: {}, children: [] },
+        },
+      ]),
+    ).rejects.toThrow("failed to build");
 
     await expect(readFile(templatePath, "utf8")).rejects.toThrow();
   });
 
   test("checks every assemble mutation in a batch with a single build", async () => {
-    const service = createService({ persistence: createMemoryPersistence() });
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...(await temporaryCardTemplatePaths()),
+    });
     const otherTemplatePath = join(
       process.cwd(),
       "src",
@@ -512,7 +617,7 @@ describe("card template assembly", () => {
       "cards",
       "__test-assembled-2.tsx",
     );
-    const before = vi.mocked(typecheckCardTemplateSources).mock.calls.length;
+    const before = vi.mocked(prepareCardTemplatePromotion).mock.calls.length;
 
     try {
       await expect(
@@ -520,19 +625,19 @@ describe("card template assembly", () => {
           {
             type: "assemble-card-template",
             template: "__test-assembled",
-            composition: { component: "Text", props: {}, children: [] },
+            jsonSchema: validJsonSchema,
+            composition: { component: "Badge", props: {}, children: [] },
           },
           {
             type: "assemble-card-template",
             template: "__test-assembled-2",
-            composition: { component: "Text", props: {}, children: [] },
+            jsonSchema: validJsonSchema,
+            composition: { component: "Badge", props: {}, children: [] },
           },
         ]),
       ).resolves.toBeDefined();
 
-      expect(
-        vi.mocked(typecheckCardTemplateSources).mock.calls.length - before,
-      ).toBe(1);
+      expect(vi.mocked(prepareCardTemplatePromotion).mock.calls.length - before).toBe(1);
     } finally {
       await unlink(templatePath).catch(() => undefined);
       await unlink(otherTemplatePath).catch(() => undefined);
@@ -540,22 +645,58 @@ describe("card template assembly", () => {
   });
 
   test("a batch failure after a successful type-check discards the assembled template rather than leaving it half-promoted", async () => {
-    const service = createService({ persistence: createMemoryPersistence() });
+    const paths = await temporaryCardTemplatePaths();
+    const service = createService({ persistence: createMemoryPersistence(), ...paths });
 
     await expect(
       service.apply([
         {
           type: "assemble-card-template",
           template: "__test-assembled",
-          composition: { component: "Text", props: {}, children: [] },
+          jsonSchema: validJsonSchema,
+          composition: { component: "Badge", props: {}, children: [] },
         },
         { type: "edit-theme", theme: { id: "definitely-missing", settings: {} } },
       ]),
     ).rejects.toThrow("Unknown theme: definitely-missing");
 
     // The composition type-checked cleanly — only the later mutation in the
-    // same batch failed — so the assembled template must not have landed.
+    // same batch failed — so neither half of the promotion may have landed:
+    // real filesystem state, not a mock assertion.
     await expect(readFile(templatePath, "utf8")).rejects.toThrow();
+    await expect(readFile(paths.cardTemplateManifestPath, "utf8")).resolves.toBe(
+      "{}\n",
+    );
+  });
+
+  test("promotion and tracked source land together or not at all", async () => {
+    const paths = await temporaryCardTemplatePaths();
+    const service = createService({ persistence: createMemoryPersistence(), ...paths });
+
+    await expect(
+      service.apply([
+        {
+          type: "assemble-card-template",
+          template: "__test-assembled",
+          jsonSchema: validJsonSchema,
+          composition: { component: "Badge", props: {}, children: [] },
+        },
+      ]),
+    ).resolves.toBeDefined();
+
+    try {
+      // Both halves of a successful assemble are on disk, not just one:
+      // the manifest names the template, and its real source file exists.
+      const manifest = JSON.parse(
+        await readFile(paths.cardTemplateManifestPath, "utf8"),
+      );
+      expect(manifest).toHaveProperty("__test-assembled");
+      await expect(readFile(templatePath, "utf8")).resolves.toContain(
+        'import { Badge } from "@/components/ui/badge"',
+      );
+    } finally {
+      await unlink(templatePath).catch(() => undefined);
+    }
   });
 });
 

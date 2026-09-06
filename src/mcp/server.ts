@@ -142,15 +142,16 @@ export function createDashboardMcpServer(service: DashboardService) {
     "assemble-card-template",
     {
       description:
-        "Generate a card template's component source from a declarative composition tree of react-aria-components.",
+        "Assemble a complete card template from a name, a mandatory JSON Schema, and a declarative composition tree of shadcn/ui components.",
       inputSchema: z.object({
         template: z.string().min(1),
+        jsonSchema: z.record(z.string(), z.unknown()),
         composition: compositionNodeSchema,
       }),
     },
-    async ({ template, composition }) =>
+    async ({ template, jsonSchema, composition }) =>
       apply(
-        { type: "assemble-card-template", template, composition },
+        { type: "assemble-card-template", template, jsonSchema, composition },
         "Card template assembled",
       ),
   );
