@@ -34,19 +34,4 @@ export const activeCardTemplateManifest: Record<
   },
 };
 
-export function serializableCardTemplateManifest() {
-  return Object.fromEntries(
-    Object.entries(activeCardTemplateManifest).map(([name, entry]) => [
-      name,
-      {
-        name: entry.name,
-        type: entry.type,
-        title: entry.title,
-        sourceFile: entry.sourceFile,
-        jsonSchema: entry.jsonSchema,
-      },
-    ]),
-  );
-}
-
 export { cardTemplateJsonSchemas, cardTemplateSchemas };

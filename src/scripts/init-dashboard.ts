@@ -2,7 +2,8 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import { defaultDashboardConfiguration } from "../contract";
-import { serializableCardTemplateManifest } from "../card-templates/manifest";
+import { activeCardTemplateManifest } from "../card-templates/manifest";
+import { promoteCardTemplates } from "../card-templates/build";
 import { createFilePersistence } from "../service";
 import { createFileIntegrationCatalog } from "../server/integrations/catalog";
 
@@ -71,21 +72,37 @@ async function main() {
   await writeIfAbsent(componentsPath, projectComponents);
   console.log(`Initialized shadcn configuration: ${componentsPath}`);
 
-  const manifest = serializableCardTemplateManifest();
-  await writeIfAbsent(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  await writeIfAbsent(
-    clientBuildPath,
-    `${JSON.stringify(
-      {
-        templates: Object.values(manifest).map(({ name, sourceFile }) => ({
-          name,
-          sourceFile: `src/client/cards/${sourceFile}`,
-        })),
-      },
-      null,
-      2,
-    )}\n`,
+  if (
+    await access(manifestPath)
+      .then(() => true)
+      .catch(() => false)
+  ) {
+    console.error(`Already initialized: ${manifestPath}`);
+    process.exit(1);
+  }
+  const candidates = await Promise.all(
+    Object.values(activeCardTemplateManifest).map(async (entry) => {
+      const clientSourcePath = `src/client/cards/${entry.sourceFile}`;
+      return {
+        name: entry.name,
+        title: entry.title,
+        sourceFile: entry.sourceFile,
+        clientSourcePath,
+        source: await readFile(join(process.cwd(), clientSourcePath), "utf8"),
+        jsonSchema: entry.jsonSchema,
+      };
+    }),
   );
+  const result = await promoteCardTemplates(candidates, {
+    manifestPath,
+    clientBuildPath,
+  });
+  if (!result.ok) {
+    console.error(
+      `Failed to build card templates (${result.stage}): ${result.message}`,
+    );
+    process.exit(1);
+  }
   console.log(`Initialized card-template manifest: ${manifestPath}`);
 }
 

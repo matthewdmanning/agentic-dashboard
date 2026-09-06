@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import { tmpdir, userInfo } from "node:os";
 import { mkdtemp, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
@@ -21,6 +21,15 @@ import {
   useTestCardTemplates,
   withTestCard,
 } from "../test-support/card-template";
+
+// A call-through spy — real type-checking still runs — so batching can be
+// asserted on directly: one `assemble-card-template` batch must reach
+// `typecheckCardTemplateSources` exactly once, not once per mutation (D39).
+vi.mock(import("../card-templates/build"), async (importOriginal) => {
+  const actual = await importOriginal();
+  return { ...actual, typecheckCardTemplateSources: vi.fn(actual.typecheckCardTemplateSources) };
+});
+import { typecheckCardTemplateSources } from "../card-templates/build";
 
 useTestCardTemplates();
 
@@ -491,6 +500,61 @@ describe("card template assembly", () => {
       ]),
     ).rejects.toThrow("failed to type-check");
 
+    await expect(readFile(templatePath, "utf8")).rejects.toThrow();
+  });
+
+  test("checks every assemble mutation in a batch with a single build", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+    const otherTemplatePath = join(
+      process.cwd(),
+      "src",
+      "client",
+      "cards",
+      "__test-assembled-2.tsx",
+    );
+    const before = vi.mocked(typecheckCardTemplateSources).mock.calls.length;
+
+    try {
+      await expect(
+        service.apply([
+          {
+            type: "assemble-card-template",
+            template: "__test-assembled",
+            composition: { component: "Text", props: {}, children: [] },
+          },
+          {
+            type: "assemble-card-template",
+            template: "__test-assembled-2",
+            composition: { component: "Text", props: {}, children: [] },
+          },
+        ]),
+      ).resolves.toBeDefined();
+
+      expect(
+        vi.mocked(typecheckCardTemplateSources).mock.calls.length - before,
+      ).toBe(1);
+    } finally {
+      await unlink(templatePath).catch(() => undefined);
+      await unlink(otherTemplatePath).catch(() => undefined);
+    }
+  });
+
+  test("a batch failure after a successful type-check discards the assembled template rather than leaving it half-promoted", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await expect(
+      service.apply([
+        {
+          type: "assemble-card-template",
+          template: "__test-assembled",
+          composition: { component: "Text", props: {}, children: [] },
+        },
+        { type: "edit-theme", theme: { id: "definitely-missing", settings: {} } },
+      ]),
+    ).rejects.toThrow("Unknown theme: definitely-missing");
+
+    // The composition type-checked cleanly — only the later mutation in the
+    // same batch failed — so the assembled template must not have landed.
     await expect(readFile(templatePath, "utf8")).rejects.toThrow();
   });
 });
