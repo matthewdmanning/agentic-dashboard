@@ -738,3 +738,32 @@ across the boundary D31 draws.
 The same encryption seam serves connection credentials (D28), which have the
 same shape: a per-user secret the server must use but should not store in the
 clear.
+
+### D42 — Key custody is pluggable; a hosted dashboard uses a managed secrets service
+
+Decided 2026-09-06. Extends D28 and D41.
+
+The host-held key D41 describes is right for a dashboard running on its owner's
+machine and wrong for a hosted one. On a machine the owner controls, a key file
+restricted to the owning account is in the right hands. On a server someone else
+operates, it is not — the host is no longer the owner, and a key on that disk is
+a key in a third party's custody.
+
+So key custody is a seam rather than a fact. `SecretBox` is the interface: the
+file-backed implementation stays the default for a locally run dashboard, and a
+hosted deployment supplies one backed by a managed secrets service, selected by
+deployment configuration rather than by editing code.
+
+`seal` and `open` are asynchronous for this reason alone. Managed services come
+in two shapes: some hand back key material, and some never release it and
+perform the encryption themselves. Only the second shape constrains the
+interface, and a synchronous signature rules it out entirely. The local
+implementation resolves immediately and pays nothing for this.
+
+No provider is canonical. A named service is an example, never a default, and no
+provider's vocabulary enters the interface — the same posture integrations take
+toward the services they connect to.
+
+Nothing outside composition constructs its own box. A caller that reaches for a
+key, or builds a local box for itself, cannot be handed a remote one, which
+would defeat the seam at exactly the deployment that needs it.
