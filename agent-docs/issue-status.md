@@ -3,13 +3,13 @@
 Where #80–#96 stand on `feat-shadcn-ui`. Verify against `gh issue list` and the
 tree before trusting it.
 
-`HANDOFF.md` and the untracked `implementation-status.md` are owned by another
-session and were not touched. `HANDOFF.md` currently shows as deleted in
-`git status`; that deletion is not mine and was not committed.
+`HANDOFF.md` and the untracked `implementation-status.md` belong to another
+session and were not touched. `HANDOFF.md` shows as deleted in `git status`;
+that deletion is not mine and was not committed.
 
 ## Landed and pushed
 
-`origin/feat-shadcn-ui` is at `53642ca`. Nothing here is closed on GitHub yet —
+`origin/feat-shadcn-ui` is at `e2ea73a`. Nothing is closed on GitHub yet —
 `Closes #N` fires when the branch merges.
 
 | Issue | Commit    | What landed                                                                                                                 |
@@ -17,75 +17,88 @@ session and were not touched. `HANDOFF.md` currently shows as deleted in
 | #81   | `c261a64` | scrypt hashing, per-account salt, `timingSafeEqual`, `resolveCaller` returning user and role, hex path segments             |
 | #82   | `78ac1d0` | `activeCardTemplateManifest` as single source for client and registry, the `message` shadcn template, generated JSON Schema |
 | #87   | `285a914` | File-backed integration catalog with origin and state, seeded at init, connectable types read from it                       |
+| #83   | `e2ea73a` | `src/card-templates/build.ts` owns validation, schema compilation, type-checking, and atomic promotion                      |
 
-Two chores also landed: `ea29dd9` untracks the per-machine shadcn skill pack,
-`53642ca` excludes `.claude/` from Prettier and Vitest.
+Two chores also landed. `ea29dd9` untracks the per-machine shadcn skill pack.
+`53642ca` excludes `.claude/` from Prettier and Vitest — a worktree checked out
+at `.claude/worktrees/impl-notes` sits inside the repository, so Prettier linted
+its markdown and Vitest ran its stale test copies against current source, giving
+five failures and nine warnings that said nothing about this tree.
 
-That second one matters. A worktree checked out at `.claude/worktrees/impl-notes`
-is inside the repository, so Prettier linted its markdown and Vitest collected
-its stale test copies and ran them against current source — five failures and
-nine warnings that said nothing about this tree. `npm run check` is now clean
-except for one Prettier warning on `implementation-status.md`, which belongs to
-another session and was deliberately left unformatted.
+`npm run check` is clean except one Prettier warning on
+`implementation-status.md`, deliberately left unformatted because it is another
+session's file. 124 tests pass.
 
-## In flight: #83
+## What #83 actually did
 
-A sonnet subagent is mid-task. **Its work is uncommitted and unreviewed.** If it
-did not finish, the working tree holds a partial consolidation.
+The first attempt added `build.ts` alongside `checkCardTemplateSource` and
+`typeChecks`, which already did candidate type-checking and temp-then-rename
+promotion inside `src/service/index.ts`. Since #83's first requirement is that
+**one** module own this, that diff was sent back. What landed:
 
-What it built first, and what was wrong with it:
+- `typecheckCardTemplateSources(sources)` is the shared primitive. One scoped
+  `tsc --noEmit` over the whole batch, returning a prepared set with
+  `commit()`/`discard()` so the service keeps its batch rollback.
+- The service's two functions are deleted, not wrapped. It now calls
+  `prepareAssembledCardTemplates` once per batch.
+- A batch costs one build, not one per mutation.
+- Promotion writes both temp files before either rename, so a half-promoted
+  generation has no window to exist in.
+- The scoped tsconfig lives under `.local/` — inside the repo so `tsc`'s upward
+  `node_modules/@types` search resolves, gitignored so a crash can't strand a
+  config file where a broad `git add` finds it.
 
-- Added `src/card-templates/build.ts` — `promoteCardTemplates(candidates, paths)`
-  doing duplicate-name validation, `z.fromJSONSchema` schema compilation, a real
-  `tsc --noEmit` against real shadcn types, then writing `manifest.json` and
-  `client-build.json`. Four tests, all suites green at 122.
-- It duplicated machinery that already existed. `src/service/index.ts` has
-  `checkCardTemplateSource` and `typeChecks` doing candidate type-checking and
-  temp-then-rename promotion for `assemble-card-template`. #83's first
-  requirement is that **one** module own this, so the diff as written made two.
-- Its `tsc` runner used the OS temp directory and had to null out
-  `types`/`typeRoots` to compensate. The service's version writes its scratch
-  tsconfig under `.local/` inside the repo on purpose, so `tsc`'s upward
-  `node_modules/@types` search resolves — and says so in a comment the subagent
-  did not read.
-- Promotion was not atomic: two independent `writeJsonAtomic` calls, so the
-  manifest could land while the client build failed.
+Two behaviours changed that no test covered, both judged acceptable:
 
-It was sent back to consolidate: move the `.local/` approach into `build.ts`,
-delete the service's two functions, give `build.ts` a two-phase interface so the
-service keeps its batch rollback, do one build per mutation batch rather than one
-per mutation, fix the two-rename gap, and preserve the existing `ServiceFailure`
-names.
+- A batch type-check failure now names every template in the batch rather than
+  the one that failed, and appends raw `tsc` output to the message. The
+  `ServiceFailure` name `invalid-composition` is unchanged, and that name is
+  what the architecture says callers may depend on.
+- `promoteCardTemplates` stages its check files under `.local/` rather than at
+  `clientSourcePath`. A scratch file inside `src/` raced any full-project `tsc`
+  run globbing `src/**`, which surfaced as intermittent `TS6053` under parallel
+  Vitest workers.
 
-Pre-consolidation copies of all six affected files are in this session's scratch
-directory. They are outside the repository and will not survive the job being
-deleted — if that work is wanted, recover it before then.
+## Two gaps #83 left open
+
+Neither blocks the issue's acceptance criteria, both matter for whoever picks up
+#84.
+
+1. **Nothing reads the promoted artifacts.** `registry.ts` and
+   `src/client/cards/index.ts` still read the static `activeCardTemplateManifest`
+   object in source. The promoted `manifest.json` and `client-build.json` are
+   written and never loaded, so promotion is real but currently unobserved.
+   `ARCHITECTURE.md` says the registry endpoint and `CardView` both use the
+   active manifest; today they use a source literal that happens to match it.
+2. **Assembled templates land in tracked source.** `assemble-card-template`
+   renames its `.tsx` into `src/client/cards/`. `ARCHITECTURE.md` says active
+   builds live at configurable paths outside `src/`. Pre-existing, not
+   introduced by #83.
 
 ## Not started
 
 #84, #85, #86, #88 through #96. #80 is out of scope by instruction.
 
-#85 is the one that matters most: #86 and #90 are blocked on it, and #81's
-ownership and path-encoding requirements have no consumer until per-user storage
-exists.
+#85 matters most: #86 and #90 are blocked on it, and #81's ownership and
+path-encoding requirements have no consumer until per-user storage exists.
 
-Note that `assemble-card-template` already partly exists in `src/service/index.ts`
-with composition-tree tests in `src/service/index.test.ts`, so #84 is further
-along than "not started" suggests — check before planning it.
+#84 is further along than "not started" suggests — `assemble-card-template`
+already exists in `src/service/index.ts` with composition-tree tests in
+`src/service/index.test.ts`. Check what is there before planning it. The two
+gaps above are its natural scope.
 
-## Next session
+## How this has been running
 
-1. Review whatever the #83 agent left, against the six directives above.
-2. Commit #83 with `Closes #83`, push.
-3. Continue in issue order to #96.
+Each issue gets a sonnet subagent spawned with an explicit read list: the issue
+body, `CONTEXT.md`, `ARCHITECTURE.md`, the relevant decisions, the matching
+section of `agent-docs/implementation-spec.md`, and **the existing code it must
+not duplicate**. That last item is what the first #83 attempt was missing, and
+naming it is the difference between a consolidation and a second copy.
 
-Each issue has been getting its own sonnet subagent, spawned with an explicit
-read list — the issue body, `CONTEXT.md`, `ARCHITECTURE.md`, the relevant
-decisions, the matching section of `agent-docs/implementation-spec.md`, and the
-existing code it must not duplicate. That last item is what the first #83 attempt
-was missing.
+Review the diff before committing. Both #83 attempts passed every check while
+the first one failed the issue's central requirement.
 
 ## Recovery
 
-`refs/backup/pre-issue-commits` (`3b4029e`) holds the pre-commit index and working
-tree from before #81/#82/#87 were split into commits.
+`refs/backup/pre-issue-commits` (`3b4029e`) holds the pre-commit index and
+working tree from before #81/#82/#87 were split into commits.
