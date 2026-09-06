@@ -169,7 +169,6 @@ export const cardSchema = z
     title: z.string(),
     template: cardTemplateNameSchema,
     state: z.unknown(),
-    queries: z.array(querySchema),
   })
   .strict();
 
@@ -391,7 +390,6 @@ export const defaultDashboardConfiguration: DashboardConfiguration = {
       title: "Welcome",
       template: "message",
       state: { message: "Welcome to your dashboard." },
-      queries: [],
     },
   ],
 };
@@ -421,9 +419,6 @@ export function parseDashboardConfiguration(
   );
   const cardIds = new Set(configuration.cards.map(({ id }) => id));
   const themeIds = new Set(configuration.themes.map(({ id }) => id));
-  const integrationIds = new Set(
-    configuration.integrations.map(({ id }) => id),
-  );
 
   const { dashboard } = configuration;
   assertUnique(
@@ -444,14 +439,6 @@ export function parseDashboardConfiguration(
   }
 
   for (const card of configuration.cards) {
-    for (const query of card.queries) {
-      if (!integrationIds.has(query.integration)) {
-        throw new Error(
-          `Invalid dashboard configuration: card '${card.id}' references unknown integration '${query.integration}'`,
-        );
-      }
-    }
-
     const state = cardTemplateSchemas[card.template]!.safeParse(card.state);
     if (!state.success) {
       throw new Error(

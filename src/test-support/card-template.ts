@@ -128,7 +128,6 @@ export function withTestCard(
         title: "Dashboard",
         template: "message",
         state: { message: "Welcome to your dashboard." },
-        queries: [],
       },
     ],
   };

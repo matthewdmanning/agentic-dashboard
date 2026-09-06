@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { userInfo } from "node:os";
 
@@ -11,6 +12,13 @@ import {
   type IntegrationCatalogEntry,
 } from "../server/integrations/catalog";
 import { connectableTypesFromCatalog } from "../server/integrations/catalog-queries";
+import {
+  newQuerySchema,
+  storedQuerySchema,
+  type NewQuery,
+  type StoredQuery,
+  type UserQueryStore,
+} from "./queries";
 import { generateComponentSource } from "../card-templates/codegen";
 import {
   prepareCardTemplatePromotion,
@@ -55,6 +63,7 @@ export type ServiceFailureCode =
   | "duplicate-id"
   | "in-use"
   | "credentials-unavailable"
+  | "queries-unavailable"
   | "invalid-card-template";
 
 export class ServiceFailure extends Error {
@@ -86,6 +95,12 @@ export interface ReadScopes {
   };
   integrations: Integration[];
   roles: Role[];
+  /**
+   * The caller's own queries, and nobody else's (D31, D32). Ungated like
+   * `role` — a user's queries are theirs by structure, not by permission
+   * (D35) — so this is never checked against the permission matrix.
+   */
+  queries: StoredQuery[];
 }
 
 export type ReadScope = keyof ReadScopes;
@@ -103,6 +118,8 @@ interface Dependencies {
   authStore?: AuthStore;
   /** Where an integration's authorization secret lives — see `CredentialStore` (D16). */
   credentials?: CredentialStore;
+  /** Where each user's own queries live — a query belongs to the user who supplied it, never to a card (D32). */
+  queries?: UserQueryStore;
   /** The service types this build can pull from — how a caller learns what may be connected. */
   connectableTypes?: readonly string[];
   /** Shared file-backed catalog; dashboard configuration remains connection-free. */
@@ -164,10 +181,35 @@ export interface DashboardService {
   ): Promise<void>;
   /** The services this build can connect to. Gated at `integrations: read`. */
   connectableTypes(credential?: string): Promise<string[]>;
+  /**
+   * Adds a query owned by the resolved caller (D32, D35). The payload never
+   * names a user — there is nothing to select, the owner is always the caller
+   * — so an ownership-bearing request cannot name someone else.
+   */
+  addQuery(query: NewQuery, credential?: string): Promise<StoredQuery>;
+  /** Edits one of the caller's own queries. Unknown to the caller — whether it doesn't exist or belongs to someone else — fails the same way (D31). */
+  editQuery(query: StoredQuery, credential?: string): Promise<void>;
+  /** Removes one of the caller's own queries. */
+  removeQuery(id: string, credential?: string): Promise<void>;
+  /**
+   * The one door onto another user's queries (D32, D35): an administrator may
+   * delete one without ever reading its contents back through the service.
+   */
+  removeUserQuery(
+    user: string,
+    id: string,
+    credential?: string,
+  ): Promise<void>;
 }
 
 export function createService(dependencies: Dependencies): DashboardService {
   let tail = Promise.resolve();
+  // ponytail: one global queue serializes every read and apply across the
+  // whole dashboard, not per card or per resource — the simplest way to make
+  // D30's "last write wins" true for concurrent query refreshes without a
+  // locking scheme. Ceiling: throughput is capped at one apply at a time,
+  // dashboard-wide. Upgrade path: per-card (or per-resource) locks if
+  // concurrent refreshes ever become the bottleneck.
   const enqueue = <T>(operation: () => Promise<T>): Promise<T> => {
     const result = tail.then(
       () => operation(),
@@ -196,6 +238,14 @@ export function createService(dependencies: Dependencies): DashboardService {
       ),
     connectableTypes: (credential) =>
       enqueue(() => readConnectableTypes(dependencies, credential)),
+    addQuery: (query, credential) =>
+      enqueue(() => addQuery(dependencies, query, credential)),
+    editQuery: (query, credential) =>
+      enqueue(() => editQuery(dependencies, query, credential)),
+    removeQuery: (id, credential) =>
+      enqueue(() => removeQuery(dependencies, id, credential)),
+    removeUserQuery: (user, id, credential) =>
+      enqueue(() => removeUserQuery(dependencies, user, id, credential)),
   };
 }
 
@@ -291,11 +341,15 @@ async function readState<Scope extends ReadScope>(
   const caller = await resolveCaller(dependencies, credential);
   const role = caller.role;
 
-  if (scope !== "all" && scope !== "role") requireRead(role, scope);
+  if (scope !== "all" && scope !== "role" && scope !== "queries") {
+    requireRead(role, scope);
+  }
 
   // Built per scope, not all at once: `all` refuses a role that may read
   // nothing, which must not decide the answer for a scope nobody asked for.
-  const scoped: { [Scope in ReadScope]: () => ReadScopes[Scope] } = {
+  const scoped: {
+    [Scope in ReadScope]: () => ReadScopes[Scope] | Promise<ReadScopes[Scope]>;
+  } = {
     all: () =>
       projectReadable(configuration, role, dependencies.roles ?? roles, integrations),
     role: () => role,
@@ -308,6 +362,9 @@ async function readState<Scope extends ReadScope>(
     }),
     integrations: () => integrations,
     roles: () => [...(dependencies.roles ?? roles)],
+    // Ungated (D35): a user's own queries are theirs by structure, and there
+    // is nothing of anyone else's in this file to filter out (D31).
+    queries: () => (caller.user ? requireQueryStore(dependencies).list(caller.user) : []),
   };
 
   return scoped[scope]();
@@ -499,6 +556,100 @@ async function readConnectableTypes(
   return [...(dependencies.connectableTypes ?? [])];
 }
 
+function requireQueryStore(dependencies: Dependencies): UserQueryStore {
+  if (!dependencies.queries) {
+    throw new ServiceFailure(
+      "queries-unavailable",
+      "Query storage is not configured",
+    );
+  }
+  return dependencies.queries;
+}
+
+/**
+ * The identity a query mutation owns it under. Never taken from a payload —
+ * an ownership-bearing request has nowhere to name someone else (D32, D35).
+ */
+async function requireOwner(
+  dependencies: Dependencies,
+  credential: string | undefined,
+): Promise<string> {
+  const caller = await resolveCaller(dependencies, credential);
+  if (!caller.user) {
+    throw new ServiceFailure(
+      "permission-denied",
+      "No caller identity to own a query",
+    );
+  }
+  return caller.user;
+}
+
+async function addQuery(
+  dependencies: Dependencies,
+  input: NewQuery,
+  credential: string | undefined,
+): Promise<StoredQuery> {
+  const owner = await requireOwner(dependencies, credential);
+  const query = storedQuerySchema.parse({
+    ...newQuerySchema.parse(input),
+    id: randomUUID(),
+  });
+  await requireQueryStore(dependencies).add(owner, query);
+  return query;
+}
+
+async function editQuery(
+  dependencies: Dependencies,
+  input: StoredQuery,
+  credential: string | undefined,
+): Promise<void> {
+  const owner = await requireOwner(dependencies, credential);
+  const query = storedQuerySchema.parse(input);
+  const found = await requireQueryStore(dependencies).edit(owner, query);
+  if (!found) {
+    throw new ServiceFailure("unknown-id", `Unknown query: ${query.id}`);
+  }
+}
+
+async function removeQuery(
+  dependencies: Dependencies,
+  id: string,
+  credential: string | undefined,
+): Promise<void> {
+  const owner = await requireOwner(dependencies, credential);
+  const found = await requireQueryStore(dependencies).remove(owner, id);
+  if (!found) {
+    throw new ServiceFailure("unknown-id", `Unknown query: ${id}`);
+  }
+}
+
+/**
+ * The one administrative door onto another user's queries (D32, D35):
+ * deletes by id without ever reading the query back, so its integration,
+ * arguments, and card mapper never pass through the service to the caller.
+ *
+ * Gated at `roles: read` — the one category where the two default roles
+ * (`admin`, `user`) diverge on a plain yes/no, the closest existing signal to
+ * "this caller administers the dashboard" now that user-owned data sits
+ * outside the five-category matrix (D35). Docs settle *that* `admin` holds
+ * this capability, not *which* category identifies it; if a deployment ever
+ * separates "may see the role list" from "may administer other users'
+ * queries", this gate should move to a purpose-built check instead.
+ */
+async function removeUserQuery(
+  dependencies: Dependencies,
+  user: string,
+  id: string,
+  credential: string | undefined,
+): Promise<void> {
+  const caller = await resolveCaller(dependencies, credential);
+  requireRead(caller.role, "roles");
+  const found = await requireQueryStore(dependencies).remove(user, id);
+  if (!found) {
+    throw new ServiceFailure("unknown-id", `Unknown query: ${id}`);
+  }
+}
+
 function requireRead(role: Role, category: PermissionCategory): void {
   if (role.permissions[category] === "noAccess") {
     throw new ServiceFailure(
@@ -630,25 +781,17 @@ function applyMutation(
         "integration",
       );
       return;
-    case "remove-integration": {
-      const card = configuration.cards.find(({ queries }) =>
-        queries.some(
-          ({ integration }) => integration === mutation.integrationId,
-        ),
-      );
-      if (card) {
-        throw new ServiceFailure(
-          "in-use",
-          `Cannot remove integration '${mutation.integrationId}' because card '${card.id}' uses it`,
-        );
-      }
+    case "remove-integration":
+      // ponytail: no longer checks query dependents — a query lives in a
+      // private per-user store (D32), and there is no cross-user store to
+      // scan here without breaking D31's privacy. Add a dependency check when
+      // integration removal grows the warn-then-override flow D40 describes.
       configuration.integrations = removeById(
         configuration.integrations,
         mutation.integrationId,
         "integration",
       );
       return;
-    }
     case "assemble-card-template":
       // Built, type-checked, and promoted through build.ts's seam above,
       // before this loop runs — nothing left to change on the configuration

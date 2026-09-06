@@ -6,6 +6,7 @@ import {
   type DashboardPersistence,
   type DashboardService,
 } from "../service";
+import type { StoredQuery, UserQueryStore } from "../service/queries";
 import type { CredentialStore } from "./integrations/credentials";
 import {
   handleDashboardConfigurationRequest,
@@ -43,16 +44,43 @@ function createMemoryCredentialStore(): CredentialStore {
   };
 }
 
+function createMemoryUserQueryStore(): UserQueryStore {
+  const values = new Map<string, StoredQuery[]>();
+  return {
+    list: async (user) => values.get(user) ?? [],
+    add: async (user, query) => {
+      values.set(user, [...(values.get(user) ?? []), query]);
+    },
+    edit: async (user, query) => {
+      const entries = values.get(user) ?? [];
+      const index = entries.findIndex(({ id }) => id === query.id);
+      if (index === -1) return false;
+      entries[index] = query;
+      values.set(user, entries);
+      return true;
+    },
+    remove: async (user, id) => {
+      const entries = values.get(user) ?? [];
+      const remaining = entries.filter((entry) => entry.id !== id);
+      if (remaining.length === entries.length) return false;
+      values.set(user, remaining);
+      return true;
+    },
+  };
+}
+
 function createTestService(
   initial = defaultDashboardConfiguration,
   extra: {
     credentials?: CredentialStore;
     connectableTypes?: string[];
     localUser?: Role;
+    queries?: UserQueryStore;
   } = {},
 ): DashboardService {
   return createService({
     persistence: createMemoryPersistence(initial),
+    queries: createMemoryUserQueryStore(),
     ...extra,
   });
 }
@@ -170,7 +198,7 @@ describe("integration refresh endpoint", () => {
     },
   };
 
-  test("runs every card's queries through the service and patches card state", async () => {
+  test("runs the caller's own queries through the service and patches card state", async () => {
     const source = {
       items: [
         {
@@ -194,22 +222,21 @@ describe("integration refresh endpoint", () => {
           title: "Calendar",
           template: "calendar",
           state: { events: [] },
-          queries: [calendarQuery],
         },
         {
           id: "unsupported-card",
           title: "Unsupported",
           template: "message",
           state: { message: "unchanged" },
-          queries: [
-            {
-              integration: "unknown",
-              query: {},
-              formatter: { shape: "object" as const, fields: {} },
-            },
-          ],
         },
       ],
+    });
+    await service.addQuery({ ...calendarQuery, cardId: "calendar-card" });
+    await service.addQuery({
+      cardId: "unsupported-card",
+      integration: "unknown",
+      query: {},
+      formatter: { shape: "object" as const, fields: {} },
     });
 
     const response = await handleIntegrationRefreshRequest(
@@ -255,10 +282,10 @@ describe("integration refresh endpoint", () => {
           title: "Calendar",
           template: "calendar",
           state: { events: [] },
-          queries: [calendarQuery],
         },
       ],
     });
+    await service.addQuery({ ...calendarQuery, cardId: "calendar-card" });
 
     const response = await handleIntegrationRefreshRequest(
       new Request("http://dashboard/api/integrations/refresh", {

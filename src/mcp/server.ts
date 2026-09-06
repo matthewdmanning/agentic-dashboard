@@ -19,6 +19,7 @@ const readScopeSchema = z.enum([
   "presentation",
   "integrations",
   "roles",
+  "queries",
 ]);
 
 function result(

@@ -31,27 +31,12 @@ const configuration: DashboardConfiguration = {
       title: "First",
       template: "message",
       state: { message: "First message" },
-      queries: [],
     },
     {
       id: "second",
       title: "Second",
       template: "calendar",
       state: { events: [] },
-      queries: [
-        {
-          integration: "calendar",
-          query: { calendarId: "team" },
-          formatter: {
-            shape: "array",
-            from: ["items"],
-            into: "events",
-            fields: {
-              title: { from: ["summary"] },
-            },
-          },
-        },
-      ],
     },
   ],
 };

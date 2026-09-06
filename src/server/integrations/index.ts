@@ -1,9 +1,6 @@
-import {
-  compileFormatterSpec,
-  type Card,
-  type Integration,
-} from "../../contract";
+import { compileFormatterSpec, type Integration } from "../../contract";
 import type { DashboardService } from "../../service";
+import type { StoredQuery } from "../../service/queries";
 import { pullGoogleCalendar, type FetchCalendar } from "./google-calendar";
 
 /**
@@ -46,54 +43,58 @@ export interface QueryRefresh {
 }
 
 /**
- * Runs every card's queries: pulls each query's integration, shapes the
- * result with the query's formatter, and applies it as the card's new state
- * through `service.apply`. Nothing else persists a pull — a pulled result is
- * transient (fetch, format, apply, discard); if a formatter changes, re-pull.
- * One query's failure does not stop the rest.
+ * Runs a set of queries — the caller's own, resolved from their private store
+ * (D32) — pulling each one's integration, shaping the result with its
+ * formatter, and applying it as its card's new state through `service.apply`.
+ * Nothing else persists a pull — a pulled result is transient (fetch, format,
+ * apply, discard); if a formatter changes, re-pull. One query's failure does
+ * not stop the rest.
+ *
+ * Card state stays shared (D30): when two users' queries feed the same card,
+ * whichever refresh's `patch-card-state` lands last is what everyone sees —
+ * `service.apply`'s single serialized queue is what makes "last" well
+ * defined (see the `ponytail:` note on `createService`'s `enqueue`).
  */
 export async function refreshCardQueries(
-  cards: readonly Card[],
+  queries: readonly StoredQuery[],
   integrations: readonly Integration[],
   context: PullContext & { service: DashboardService; credential?: string },
 ): Promise<QueryRefresh[]> {
   const refreshes: QueryRefresh[] = [];
 
-  for (const card of cards) {
-    for (const query of card.queries) {
-      const integration = integrations.find(
-        ({ id }) => id === query.integration,
+  for (const query of queries) {
+    const integration = integrations.find(
+      ({ id }) => id === query.integration,
+    );
+    if (!integration) {
+      refreshes.push({
+        cardId: query.cardId,
+        status: "failed",
+        message: `Unknown integration: ${query.integration}`,
+      });
+      continue;
+    }
+
+    const pull = integrationPulls[integration.type];
+    if (!pull) {
+      refreshes.push({ cardId: query.cardId, status: "unsupported" });
+      continue;
+    }
+
+    try {
+      const source = await pull(integration, query.query, context);
+      const patch = compileFormatterSpec(query.formatter)(source);
+      await context.service.apply(
+        [{ type: "patch-card-state", cardId: query.cardId, patch }],
+        context.credential,
       );
-      if (!integration) {
-        refreshes.push({
-          cardId: card.id,
-          status: "failed",
-          message: `Unknown integration: ${query.integration}`,
-        });
-        continue;
-      }
-
-      const pull = integrationPulls[integration.type];
-      if (!pull) {
-        refreshes.push({ cardId: card.id, status: "unsupported" });
-        continue;
-      }
-
-      try {
-        const source = await pull(integration, query.query, context);
-        const patch = compileFormatterSpec(query.formatter)(source);
-        await context.service.apply(
-          [{ type: "patch-card-state", cardId: card.id, patch }],
-          context.credential,
-        );
-        refreshes.push({ cardId: card.id, status: "refreshed" });
-      } catch (error) {
-        refreshes.push({
-          cardId: card.id,
-          status: "failed",
-          message: error instanceof Error ? error.message : "Pull failed",
-        });
-      }
+      refreshes.push({ cardId: query.cardId, status: "refreshed" });
+    } catch (error) {
+      refreshes.push({
+        cardId: query.cardId,
+        status: "failed",
+        message: error instanceof Error ? error.message : "Pull failed",
+      });
     }
   }
 

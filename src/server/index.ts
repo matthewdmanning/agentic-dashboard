@@ -13,6 +13,7 @@ import {
   type DashboardService,
   type ServiceFailureCode,
 } from "../service";
+import { createFileUserQueryStore } from "../service/queries";
 import { createFileCredentialStore } from "./integrations/credentials";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
 import { handleRegistryRequest } from "./registry";
@@ -34,6 +35,7 @@ const readScopes = [
   "presentation",
   "integrations",
   "roles",
+  "queries",
 ] as const;
 
 export async function handleDashboardConfigurationRequest(
@@ -79,6 +81,7 @@ const failureStatus: Record<ServiceFailureCode, number> = {
   "duplicate-id": 409,
   "in-use": 409,
   "credentials-unavailable": 500,
+  "queries-unavailable": 500,
   "invalid-card-template": 422,
 };
 
@@ -120,6 +123,8 @@ async function readDashboardScope(
       return service.read("integrations", credential);
     case "roles":
       return service.read("roles", credential);
+    case "queries":
+      return service.read("queries", credential);
   }
 }
 
@@ -148,12 +153,12 @@ export async function handleIntegrationRefreshRequest(
     return new Response("Method not allowed", { status: 405 });
   }
   const credential = credentialFromRequest(request);
-  const [cards, integrations] = await Promise.all([
-    dependencies.service.read("cards", credential),
+  const [queries, integrations] = await Promise.all([
+    dependencies.service.read("queries", credential),
     dependencies.service.read("integrations", credential),
   ]);
   return Response.json(
-    await refreshCardQueries(cards, integrations, { ...dependencies, credential }),
+    await refreshCardQueries(queries, integrations, { ...dependencies, credential }),
   );
 }
 
@@ -230,6 +235,10 @@ async function startServer() {
   const catalogPath =
     process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
     join(workspace, ".dashboard", "integrations.json");
+  // Per-user files live under `.dashboard/users/<user>/` (Phase 2 conventions).
+  const userQueriesRoot =
+    process.env.DASHBOARD_USER_DATA_PATH ??
+    join(workspace, ".dashboard", "users");
   const localUserTokenPath =
     process.env.DASHBOARD_LOCAL_USER_TOKEN_PATH ??
     join(workspace, ".dashboard", "local-user-token");
@@ -244,11 +253,13 @@ async function startServer() {
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
   const credentials = createFileCredentialStore(credentialsPath);
   const catalog = createFileIntegrationCatalog(catalogPath);
+  const queries = createFileUserQueryStore(userQueriesRoot);
   const service = createService({
     persistence: createFilePersistence(dashboardPath),
     authStore: createFileAuthStore(authStorePath),
     credentials,
     catalog,
+    queries,
     localUserToken,
     cardTemplateManifestPath,
     cardTemplateClientBuildPath,

@@ -17,6 +17,7 @@ import {
   resolveCaller,
   type DashboardPersistence,
 } from "./index";
+import { createFileUserQueryStore, type NewQuery } from "./queries";
 import {
   useTestCardTemplates,
   withTestCard,
@@ -782,27 +783,23 @@ describe("integration authorization", () => {
         integrations: [
           { id: "team-calendar", type: "google-calendar", settings: {} },
         ],
-        cards: [
-          {
-            ...testConfiguration.cards[0]!,
-            queries: [
-              {
-                integration: "team-calendar",
-                query: {},
-                formatter: { shape: "object", fields: {} },
-              },
-            ],
-          },
-        ],
       }),
       credentials,
     });
 
+    // The batch fails on its second mutation, after `remove-integration`
+    // already ran against the in-memory candidate — proving the credential
+    // revoke that rides along with a successful removal never fires unless
+    // the whole batch, including persistence, actually lands.
     await expect(
       service.apply([
         { type: "remove-integration", integrationId: "team-calendar" },
+        {
+          type: "edit-theme",
+          theme: { id: "definitely-missing", settings: {} },
+        },
       ]),
-    ).rejects.toThrow("because card 'welcome' uses it");
+    ).rejects.toThrow("Unknown theme: definitely-missing");
     await expect(credentials.get("team-calendar")).resolves.toBe(
       "secret-token",
     );
@@ -888,5 +885,167 @@ describe("file-backed integration catalog", () => {
     const service = createService({ persistence: createMemoryPersistence(), catalog });
 
     await expect(service.connectableTypes()).resolves.toEqual(["google-calendar"]);
+  });
+});
+
+describe("user-owned queries", () => {
+  async function createQueryStore() {
+    return createFileUserQueryStore(
+      await mkdtemp(join(tmpdir(), "user-queries-")),
+    );
+  }
+
+  const newQuery: NewQuery = {
+    cardId: "welcome",
+    integration: "calendar",
+    query: { calendarId: "team" },
+    formatter: { shape: "object", fields: {} },
+  };
+
+  function twoUserAuthStore() {
+    return {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : credential === "admin-token"
+              ? { user: "root", role: "admin" }
+              : undefined,
+    };
+  }
+
+  test("two users supplying queries for the same card each read only their own", async () => {
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries,
+      authStore: twoUserAuthStore(),
+    });
+
+    const aliceQuery = await service.addQuery(newQuery, "alice-token");
+    const bobQuery = await service.addQuery(newQuery, "bob-token");
+
+    await expect(service.read("queries", "alice-token")).resolves.toEqual([
+      aliceQuery,
+    ]);
+    await expect(service.read("queries", "bob-token")).resolves.toEqual([
+      bobQuery,
+    ]);
+  });
+
+  test("an ownership-bearing request cannot name another user as the owner", async () => {
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries,
+      authStore: twoUserAuthStore(),
+    });
+
+    // There is no `user` field on the payload to begin with — naming one is
+    // rejected outright rather than silently ignored, so nothing lands under
+    // the name a caller tried to select.
+    await expect(
+      service.addQuery(
+        { ...newQuery, user: "bob" } as unknown as NewQuery,
+        "alice-token",
+      ),
+    ).rejects.toThrow();
+
+    await expect(service.read("queries", "alice-token")).resolves.toEqual([]);
+    await expect(service.read("queries", "bob-token")).resolves.toEqual([]);
+  });
+
+  test("an administrator deletes another user's query without ever reading it back", async () => {
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries,
+      authStore: twoUserAuthStore(),
+    });
+    const stored = await service.addQuery(newQuery, "alice-token");
+
+    // `removeUserQuery` resolves `void` — the service has no method that
+    // could hand this query's integration, arguments, or mapper back to the
+    // administrator, or to anyone but its owner.
+    await expect(
+      service.removeUserQuery("alice", stored.id, "admin-token"),
+    ).resolves.toBeUndefined();
+
+    await expect(service.read("queries", "alice-token")).resolves.toEqual([]);
+  });
+
+  test("a non-administrator cannot delete another user's query", async () => {
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries,
+      authStore: twoUserAuthStore(),
+    });
+    const stored = await service.addQuery(newQuery, "alice-token");
+
+    await expect(
+      service.removeUserQuery("alice", stored.id, "bob-token"),
+    ).rejects.toThrow("roles: read");
+
+    await expect(service.read("queries", "alice-token")).resolves.toEqual([
+      stored,
+    ]);
+  });
+
+  test("editing or removing a query outside the caller's own store fails as unknown, not as someone else's", async () => {
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries,
+      authStore: twoUserAuthStore(),
+    });
+    const stored = await service.addQuery(newQuery, "alice-token");
+
+    await expect(
+      service.editQuery(
+        { ...stored, query: { calendarId: "other" } },
+        "bob-token",
+      ),
+    ).rejects.toThrow(`Unknown query: ${stored.id}`);
+    await expect(
+      service.removeQuery(stored.id, "bob-token"),
+    ).rejects.toThrow(`Unknown query: ${stored.id}`);
+
+    // Untouched: bob's failed attempt did not reach alice's query.
+    await expect(service.read("queries", "alice-token")).resolves.toEqual([
+      stored,
+    ]);
+  });
+
+  test("card state stays shared: whichever refresh's patch applies last is what every reader sees", async () => {
+    // Simulates two users' independent refreshes racing against the same
+    // card — each is its own `apply` call, exactly as two separate HTTP
+    // refresh requests would produce (D30). The service's single serialized
+    // queue (see the `ponytail:` note in `createService`) is what makes
+    // "last write wins" a well-defined, observable outcome rather than a
+    // coin flip between the two.
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await Promise.all([
+      service.apply([
+        {
+          type: "patch-card-state",
+          cardId: "welcome",
+          patch: { message: "Alice's refresh" },
+        },
+      ]),
+      service.apply([
+        {
+          type: "patch-card-state",
+          cardId: "welcome",
+          patch: { message: "Bob's refresh" },
+        },
+      ]),
+    ]);
+
+    await expect(service.read("cards")).resolves.toMatchObject([
+      { state: { message: "Bob's refresh" } },
+    ]);
   });
 });
