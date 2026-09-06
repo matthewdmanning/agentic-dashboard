@@ -1,65 +1,91 @@
 # Issue status — 2026-09-06
 
-Where #80–#96 stand on `feat-shadcn-ui`. Written from a session that committed
-the first three; verify against `gh issue list` and the tree before trusting it.
+Where #80–#96 stand on `feat-shadcn-ui`. Verify against `gh issue list` and the
+tree before trusting it.
 
 `HANDOFF.md` and the untracked `implementation-status.md` are owned by another
-session and were not touched.
+session and were not touched. `HANDOFF.md` currently shows as deleted in
+`git status`; that deletion is not mine and was not committed.
 
-## Closed by commits on this branch
+## Landed and pushed
 
-None are closed on GitHub yet — `Closes #N` fires when the branch merges.
+`origin/feat-shadcn-ui` is at `53642ca`. Nothing here is closed on GitHub yet —
+`Closes #N` fires when the branch merges.
 
-| Issue | Commit    | What landed                                                                                                                                                               |
-| ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| #81   | `c261a64` | scrypt hashing, per-account salt, `timingSafeEqual`, `resolveCaller` returning user and role, hex path segments                                                           |
-| #82   | `78ac1d0` | `activeCardTemplateManifest` as single source for client and registry, the `message` shadcn template, generated JSON Schema, initialization writing config/manifest/build |
-| #87   | `285a914` | File-backed integration catalog with origin and state, seeded at init, connectable types read from it, recursive credential-key guard                                     |
+| Issue | Commit    | What landed                                                                                                                 |
+| ----- | --------- | --------------------------------------------------------------------------------------------------------------------------- |
+| #81   | `c261a64` | scrypt hashing, per-account salt, `timingSafeEqual`, `resolveCaller` returning user and role, hex path segments             |
+| #82   | `78ac1d0` | `activeCardTemplateManifest` as single source for client and registry, the `message` shadcn template, generated JSON Schema |
+| #87   | `285a914` | File-backed integration catalog with origin and state, seeded at init, connectable types read from it                       |
 
-Each commit typechecks and passes tests on its own: 109, 111, then 118 tests.
+Two chores also landed: `ea29dd9` untracks the per-machine shadcn skill pack,
+`53642ca` excludes `.claude/` from Prettier and Vitest.
 
-## Partly implemented, not closable
+That second one matters. A worktree checked out at `.claude/worktrees/impl-notes`
+is inside the repository, so Prettier linted its markdown and Vitest collected
+its stale test copies and ran them against current source — five failures and
+nine warnings that said nothing about this tree. `npm run check` is now clean
+except for one Prettier warning on `implementation-status.md`, which belongs to
+another session and was deliberately left unformatted.
 
-Code for these sits inside the three commits above, because it shares files with
-what did land. Splitting it out means rewriting those commits.
+## In flight: #83
 
-- **#83** — atomic promotion. No build module, no candidate set, no promotion
-  step. The manifest is a static object, not a promoted artifact.
-- **#84** — schema-plus-composition assembly. `react-aria-components` is still
-  in `package.json` and still what `codegen.ts` generates against.
-- **#86** — card mappers. Nothing in `src/` uses the term; `formatter` is
-  unchanged.
-- **#88** — per-user connections. `credentials.ts` has no user dimension and no
-  AES-256-GCM.
-- **#90** — owner-scoped refresh. Depends on #85, #86, #88.
-- **#94** — per-user base colour. Depends on #81's user identity, which now
-  exists.
+A sonnet subagent is mid-task. **Its work is uncommitted and unreviewed.** If it
+did not finish, the working tree holds a partial consolidation.
 
-## No code yet
+What it built first, and what was wrong with it:
 
-#80, #85, #89, #91, #92, #93, #95, #96.
+- Added `src/card-templates/build.ts` — `promoteCardTemplates(candidates, paths)`
+  doing duplicate-name validation, `z.fromJSONSchema` schema compilation, a real
+  `tsc --noEmit` against real shadcn types, then writing `manifest.json` and
+  `client-build.json`. Four tests, all suites green at 122.
+- It duplicated machinery that already existed. `src/service/index.ts` has
+  `checkCardTemplateSource` and `typeChecks` doing candidate type-checking and
+  temp-then-rename promotion for `assemble-card-template`. #83's first
+  requirement is that **one** module own this, so the diff as written made two.
+- Its `tsc` runner used the OS temp directory and had to null out
+  `types`/`typeRoots` to compensate. The service's version writes its scratch
+  tsconfig under `.local/` inside the repo on purpose, so `tsc`'s upward
+  `node_modules/@types` search resolves — and says so in a comment the subagent
+  did not read.
+- Promotion was not atomic: two independent `writeJsonAtomic` calls, so the
+  manifest could land while the client build failed.
 
-#85 matters most: #86 and #90 are blocked on it, and #81's ownership and
-path-encoding requirements have no consumer until per-user storage exists.
+It was sent back to consolidate: move the `.local/` approach into `build.ts`,
+delete the service's two functions, give `build.ts` a two-phase interface so the
+service keeps its batch rollback, do one build per mutation batch rather than one
+per mutation, fix the two-rename gap, and preserve the existing `ServiceFailure`
+names.
 
-## Known trap
+Pre-consolidation copies of all six affected files are in this session's scratch
+directory. They are outside the repository and will not survive the job being
+deleted — if that work is wanted, recover it before then.
 
-`npm run check` fails, and not because of the code. The `impl-notes` worktree
-lives at `.claude/worktrees/impl-notes` inside the repository, so Prettier lints
-its markdown and Vitest runs its stale test copies against current source — 5
-phantom test failures, 9 phantom format warnings. Neither `.prettierignore` nor
-the Vitest config excludes `.claude/`. Run
-`npx vitest run --exclude '**/.claude/**'` for a true result until it is fixed.
+## Not started
 
-## Uncommitted
+#84, #85, #86, #88 through #96. #80 is out of scope by instruction.
 
-- `.gitignore` plus 15 staged deletions untracking `.claude/skills/shadcn`,
-  keeping `run-agentic-dashboard` tracked via a negation pattern.
-- `skills-lock.json`, 102 added lines from a `/skills` run.
-- `implementation-status.md`, untracked, from another session.
+#85 is the one that matters most: #86 and #90 are blocked on it, and #81's
+ownership and path-encoding requirements have no consumer until per-user storage
+exists.
+
+Note that `assemble-card-template` already partly exists in `src/service/index.ts`
+with composition-tree tests in `src/service/index.test.ts`, so #84 is further
+along than "not started" suggests — check before planning it.
+
+## Next session
+
+1. Review whatever the #83 agent left, against the six directives above.
+2. Commit #83 with `Closes #83`, push.
+3. Continue in issue order to #96.
+
+Each issue has been getting its own sonnet subagent, spawned with an explicit
+read list — the issue body, `CONTEXT.md`, `ARCHITECTURE.md`, the relevant
+decisions, the matching section of `agent-docs/implementation-spec.md`, and the
+existing code it must not duplicate. That last item is what the first #83 attempt
+was missing.
 
 ## Recovery
 
-`refs/backup/pre-issue-commits` (`3b4029e`) holds the pre-commit index and
-working tree. It excludes untracked files, which were copied separately to the
-session's scratch directory — the two together are the full restore.
+`refs/backup/pre-issue-commits` (`3b4029e`) holds the pre-commit index and working
+tree from before #81/#82/#87 were split into commits.
