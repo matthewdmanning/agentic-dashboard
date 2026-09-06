@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
-import { userInfo } from "node:os";
-import { readFile, unlink } from "node:fs/promises";
+import { tmpdir, userInfo } from "node:os";
+import { mkdtemp, readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -11,6 +11,7 @@ import {
   type Role,
 } from "../contract";
 import type { CredentialStore } from "../server/integrations/credentials";
+import { createFileIntegrationCatalog } from "../server/integrations/catalog";
 import {
   createService,
   resolveCaller,
@@ -631,5 +632,56 @@ describe("connectable integration types", () => {
     await expect(service.connectableTypes()).rejects.toThrow(
       "integrations: read",
     );
+  });
+});
+
+describe("file-backed integration catalog", () => {
+  async function createCatalog() {
+    return createFileIntegrationCatalog(
+      join(await mkdtemp(join(tmpdir(), "catalog-")), "catalog.json"),
+    );
+  }
+
+  test("seeds shared entries visible to every service, including zero connections", async () => {
+    const catalog = await createCatalog();
+    const persistence = createMemoryPersistence();
+    const first = createService({ persistence, catalog });
+    const second = createService({ persistence, catalog });
+
+    const entries = await first.read("integrations");
+    expect(entries).toEqual(expect.arrayContaining([
+      expect.objectContaining({ origin: "default", state: "available" }),
+      expect.objectContaining({ origin: "recommended", state: "available" }),
+    ]));
+    await expect(second.read("integrations")).resolves.toEqual(entries);
+  });
+
+  test("persists a dynamic entry through the existing add-integration seam", async () => {
+    const catalog = await createCatalog();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      catalog,
+    });
+
+    await service.apply([{
+      type: "add-integration",
+      integration: { id: "dynamic-service", type: "dynamic-service", settings: {} },
+    }]);
+
+    await expect(catalog.read()).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "dynamic-service", origin: "dynamic", state: "available" }),
+    ]));
+  });
+
+  test("derives connectable choices from available catalog entries", async () => {
+    const catalog = await createCatalog();
+    const entries = await catalog.read();
+    await catalog.write([
+      ...entries,
+      { id: "blocked-service", type: "blocked-service", settings: {}, origin: "dynamic", state: "blocked" },
+    ]);
+    const service = createService({ persistence: createMemoryPersistence(), catalog });
+
+    await expect(service.connectableTypes()).resolves.toEqual(["google-calendar"]);
   });
 });

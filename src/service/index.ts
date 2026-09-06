@@ -10,6 +10,12 @@ const execFileAsync = promisify(execFile);
 import type { AuthStore } from "../auth";
 import { isLocalUserToken } from "../auth/local-user";
 import type { CredentialStore } from "../server/integrations/credentials";
+import {
+  dynamicIntegrationEntry,
+  type IntegrationCatalog,
+  type IntegrationCatalogEntry,
+} from "../server/integrations/catalog";
+import { connectableTypesFromCatalog } from "../server/integrations/catalog-queries";
 import { generateComponentSource } from "../card-templates/codegen";
 import {
   defaultDashboardConfiguration,
@@ -94,6 +100,8 @@ interface Dependencies {
   credentials?: CredentialStore;
   /** The service types this build can pull from — how a caller learns what may be connected. */
   connectableTypes?: readonly string[];
+  /** Shared file-backed catalog; dashboard configuration remains connection-free. */
+  catalog?: IntegrationCatalog;
   /**
    * The roles file (D35). Defaults to the one `contract` imports; overridden
    * only by tests, since configuring roles means editing that file.
@@ -215,6 +223,15 @@ async function readConfiguration(
   return parseDashboardConfiguration(await persistence.read());
 }
 
+async function readIntegrations(
+  dependencies: Dependencies,
+  configuration: DashboardConfiguration,
+): Promise<Integration[]> {
+  return dependencies.catalog
+    ? await dependencies.catalog.read()
+    : configuration.integrations;
+}
+
 export async function resolveCaller(
   dependencies: Dependencies,
   credential: string | undefined,
@@ -261,6 +278,7 @@ async function readState<Scope extends ReadScope>(
   credential: string | undefined,
 ): Promise<ReadScopes[Scope]> {
   const configuration = await readConfiguration(dependencies.persistence);
+  const integrations = await readIntegrations(dependencies, configuration);
   const caller = await resolveCaller(dependencies, credential);
   const role = caller.role;
 
@@ -269,7 +287,8 @@ async function readState<Scope extends ReadScope>(
   // Built per scope, not all at once: `all` refuses a role that may read
   // nothing, which must not decide the answer for a scope nobody asked for.
   const scoped: { [Scope in ReadScope]: () => ReadScopes[Scope] } = {
-    all: () => projectReadable(configuration, role, dependencies.roles ?? roles),
+    all: () =>
+      projectReadable(configuration, role, dependencies.roles ?? roles, integrations),
     role: () => role,
     data: () => configuration.cards.map(({ id, state }) => ({ id, state })),
     cards: () => configuration.cards,
@@ -278,7 +297,7 @@ async function readState<Scope extends ReadScope>(
       themes: configuration.themes,
       fontScale: configuration.fontScale,
     }),
-    integrations: () => configuration.integrations,
+    integrations: () => integrations,
     roles: () => [...(dependencies.roles ?? roles)],
   };
 
@@ -300,6 +319,7 @@ function projectReadable(
   configuration: DashboardConfiguration,
   role: Role,
   availableRoles: readonly Role[],
+  integrations = configuration.integrations,
   { allowEmpty = false }: { allowEmpty?: boolean } = {},
 ): ReadableConfiguration {
   const readable: ReadableConfiguration = {};
@@ -315,7 +335,7 @@ function projectReadable(
     readable.fontScale = configuration.fontScale;
   }
   if (role.permissions.integrations !== "noAccess") {
-    readable.integrations = configuration.integrations;
+    readable.integrations = integrations;
   }
   if (role.permissions.roles !== "noAccess") readable.roles = [...availableRoles];
 
@@ -332,6 +352,7 @@ async function applyMutations(
 ): Promise<ReadScopes["all"]> {
   const mutations = mutationsSchema.parse(input);
   const configuration = await readConfiguration(dependencies.persistence);
+  const integrations = await readIntegrations(dependencies, configuration);
   const caller = await resolveCaller(dependencies, credential);
   const role = caller.role;
 
@@ -364,10 +385,24 @@ async function applyMutations(
       }
     }
 
-    const candidate = structuredClone(configuration);
-    for (const mutation of mutations) applyMutation(candidate, mutation);
+    const candidate = structuredClone({ ...configuration, integrations });
+    for (const mutation of mutations) {
+      applyMutation(candidate, mutation, dependencies.catalog !== undefined);
+    }
     next = parseDashboardConfiguration(candidate);
-    await dependencies.persistence.write(next);
+    await dependencies.persistence.write(
+      dependencies.catalog ? { ...next, integrations: configuration.integrations } : next,
+    );
+    if (
+      dependencies.catalog &&
+      mutations.some(({ type }) =>
+        ["add-integration", "edit-integration", "remove-integration"].includes(type),
+      )
+    ) {
+      await dependencies.catalog.write(
+        next.integrations as IntegrationCatalogEntry[],
+      );
+    }
 
     for (const { tempPath, finalPath } of assembled) {
       await rename(tempPath, finalPath);
@@ -402,9 +437,17 @@ async function applyMutations(
     );
   }
 
-  return projectReadable(next, role, dependencies.roles ?? roles, {
-    allowEmpty: true,
-  });
+  return projectReadable(
+    next,
+    role,
+    dependencies.roles ?? roles,
+    dependencies.catalog
+      ? await readIntegrations(dependencies, next)
+      : next.integrations,
+    {
+      allowEmpty: true,
+    },
+  );
 }
 
 async function authorizeConnection(
@@ -414,11 +457,12 @@ async function authorizeConnection(
   credential: string | undefined,
 ): Promise<void> {
   const configuration = await readConfiguration(dependencies.persistence);
+  const integrations = await readIntegrations(dependencies, configuration);
   const caller = await resolveCaller(dependencies, credential);
   const role = caller.role;
   requireLevel(role, "integrations", "edit");
 
-  if (!configuration.integrations.some(({ id }) => id === connectionId)) {
+  if (!integrations.some(({ id }) => id === connectionId)) {
     throw new ServiceFailure(
       "unknown-id",
       `Unknown integration: ${connectionId}`,
@@ -442,6 +486,9 @@ async function readConnectableTypes(
   const caller = await resolveCaller(dependencies, credential);
   const role = caller.role;
   requireRead(role, "integrations");
+  if (dependencies.catalog) {
+    return connectableTypesFromCatalog(await dependencies.catalog.read());
+  }
   return [...(dependencies.connectableTypes ?? [])];
 }
 
@@ -477,6 +524,7 @@ function requireLevel(
 function applyMutation(
   configuration: DashboardConfiguration,
   mutation: Mutation,
+  catalogBacked = false,
 ): void {
   switch (mutation.type) {
     case "patch-card-state": {
@@ -560,7 +608,13 @@ function applyMutation(
       configuration.fontScale = mutation.fontScale;
       return;
     case "add-integration":
-      addById(configuration.integrations, mutation.integration, "integration");
+      addById(
+        configuration.integrations,
+        catalogBacked
+          ? dynamicIntegrationEntry(mutation.integration)
+          : mutation.integration,
+        "integration",
+      );
       return;
     case "edit-integration":
       replaceById(

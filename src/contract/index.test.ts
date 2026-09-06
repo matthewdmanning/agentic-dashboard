@@ -169,6 +169,14 @@ describe("integration settings", () => {
         settings: { region: "eu" },
       }),
     ).not.toThrow();
+
+    expect(() =>
+      integrationSchema.parse({
+        id: "connection",
+        type: "example-service",
+        settings: { metadata: { accessToken: "not-allowed" } },
+      }),
+    ).toThrow();
   });
 });
 

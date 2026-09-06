@@ -4,6 +4,7 @@ import { dirname, join, resolve } from "node:path";
 import { defaultDashboardConfiguration } from "../contract";
 import { serializableCardTemplateManifest } from "../card-templates/manifest";
 import { createFilePersistence } from "../service";
+import { createFileIntegrationCatalog } from "../server/integrations/catalog";
 
 async function writeIfAbsent(path: string, contents: string): Promise<void> {
   if (
@@ -29,6 +30,9 @@ async function main() {
   const credentialsPath =
     process.env.DASHBOARD_INTEGRATION_CREDENTIALS_PATH ??
     join(workspace, ".dashboard", "integration-credentials.json");
+  const catalogPath =
+    process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
+    join(workspace, ".dashboard", "integrations.json");
   const componentsPath =
     process.env.DASHBOARD_COMPONENTS_PATH ?? join(workspace, "components.json");
   const manifestPath =
@@ -57,6 +61,9 @@ async function main() {
   await writeIfAbsent(credentialsPath, "{}\n");
   console.log(`Initialized credential store: ${credentialsPath}`);
 
+  await createFileIntegrationCatalog(catalogPath).read();
+  console.log(`Initialized integration catalog: ${catalogPath}`);
+
   const projectComponents = await readFile(
     join(process.cwd(), "components.json"),
     "utf8",
@@ -65,8 +72,7 @@ async function main() {
   console.log(`Initialized shadcn configuration: ${componentsPath}`);
 
   const manifest = serializableCardTemplateManifest();
-  await writeIfAbsent(manifestPath, `${JSON.stringify(manifest, null, 2)}
-`);
+  await writeIfAbsent(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
   await writeIfAbsent(
     clientBuildPath,
     `${JSON.stringify(
@@ -78,8 +84,7 @@ async function main() {
       },
       null,
       2,
-    )}
-`,
+    )}\n`,
   );
   console.log(`Initialized card-template manifest: ${manifestPath}`);
 }

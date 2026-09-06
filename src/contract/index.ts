@@ -54,15 +54,25 @@ export type Role = z.infer<typeof roleSchema>;
 
 const credentialKey = /credential|password|secret|token|api.?key|access.?key/i;
 
+function containsCredentialKey(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(containsCredentialKey);
+  if (value === null || typeof value !== "object") return false;
+  return Object.entries(value).some(
+    ([key, nested]) => credentialKey.test(key) || containsCredentialKey(nested),
+  );
+}
+
 export const integrationSchema = z
   .object({
     id: z.string().min(1),
     type: z.string().min(1),
     settings: z.record(z.string(), z.unknown()),
+    origin: z.enum(["default", "recommended", "dynamic"]).optional(),
+    state: z.enum(["available", "blocked"]).optional(),
   })
   .strict()
   .superRefine(({ settings }, context) => {
-    if (Object.keys(settings).some((key) => credentialKey.test(key))) {
+    if (containsCredentialKey(settings)) {
       context.addIssue({
         code: "custom",
         path: ["settings"],
@@ -72,6 +82,17 @@ export const integrationSchema = z
   });
 
 export type Integration = z.infer<typeof integrationSchema>;
+
+export const integrationCatalogEntrySchema = integrationSchema
+  .safeExtend({
+    origin: z.enum(["default", "recommended", "dynamic"]),
+    state: z.enum(["available", "blocked"]),
+  })
+  .strict();
+
+export type IntegrationCatalogEntry = z.infer<
+  typeof integrationCatalogEntrySchema
+>;
 
 export const themeSchema = z
   .object({

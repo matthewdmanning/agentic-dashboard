@@ -14,10 +14,10 @@ import {
   type ServiceFailureCode,
 } from "../service";
 import { createFileCredentialStore } from "./integrations/credentials";
+import { createFileIntegrationCatalog } from "./integrations/catalog";
 import { handleRegistryRequest } from "./registry";
 import type { FetchCalendar } from "./integrations/google-calendar";
 import {
-  integrationPulls,
   refreshCardQueries,
   type TokenProvider,
 } from "./integrations";
@@ -223,6 +223,9 @@ async function startServer() {
   const credentialsPath =
     process.env.DASHBOARD_INTEGRATION_CREDENTIALS_PATH ??
     join(workspace, ".dashboard", "integration-credentials.json");
+  const catalogPath =
+    process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
+    join(workspace, ".dashboard", "integrations.json");
   const localUserTokenPath =
     process.env.DASHBOARD_LOCAL_USER_TOKEN_PATH ??
     join(workspace, ".dashboard", "local-user-token");
@@ -230,11 +233,12 @@ async function startServer() {
   // only the OS account running this process can read it.
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
   const credentials = createFileCredentialStore(credentialsPath);
+  const catalog = createFileIntegrationCatalog(catalogPath);
   const service = createService({
     persistence: createFilePersistence(dashboardPath),
     authStore: createFileAuthStore(authStorePath),
     credentials,
-    connectableTypes: Object.keys(integrationPulls),
+    catalog,
     localUserToken,
   });
   // Internal plumbing for the server's own outbound calls, not a caller-facing
