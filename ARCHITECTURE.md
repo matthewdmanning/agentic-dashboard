@@ -50,7 +50,7 @@ The module map above is the target cut. The rewrite lands issue by issue, so par
 | `view`           | Not renamed; lives at `src/client/`; on `service`                                                                                         |
 | `card-templates` | Partly split out; the composition-tree codegen is at `src/card-templates/`, `CardView` and the template map remain at `src/client/cards/` |
 
-**Zero card templates are wired in right now — a state of this rewrite, not a gap in the design.** The five that shipped were deleted (D32) and their shadcn replacements are not written, so `cardTemplateSchemas` is empty, the default configuration holds no card, the registry serves an empty index, and a running dashboard renders nothing. Their schemas were kept for tests at `src/test-support/card-template.ts`. Writing one is ordinary work against a mechanism that is already here.
+One card template is wired in: `message`, at `src/client/cards/message.tsx`, named by the default configuration's `welcome` card and served by the registry. The five that shipped before were deleted (D32); their schemas were kept for tests at `src/test-support/card-template.ts`. Writing another is ordinary work against a mechanism that is already here.
 
 Further gaps between the decisions and the tree: a card still carries its queries and each query its own inline mapper, under the old name `formatter`; and `fontScale` still sits in dashboard configuration. [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the full list, phased.
 
