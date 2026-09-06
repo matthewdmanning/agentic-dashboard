@@ -31,3 +31,7 @@ Thumbs.db
 .e2e-workspace/
 test-results/
 playwright-report/
+
+# Agent skills, installed per-machine
+.claude/skills/
+!.claude/skills/run-agentic-dashboard/
