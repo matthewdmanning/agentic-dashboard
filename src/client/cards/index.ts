@@ -1,30 +1,47 @@
 import type { ComponentType } from "react";
 import type * as z from "zod/v4";
+import {
+  activeCardTemplateManifest,
+  type CardTemplateManifestEntry,
+} from "../../card-templates/manifest";
 import type { CardTemplateName } from "../../contract";
+import { MessageCard } from "./message";
 
 export interface CardTemplate<T> {
   schema: z.ZodType<T>;
   Component: ComponentType<{ data: T }>;
 }
 
-/**
- * The card templates this dashboard has wired in — the map that decides which
- * templates are real, read by `CardView` to render one and by the registry
- * endpoint to serve them (D24).
- *
- * Empty: the original five were deleted in D32 and their shadcn replacements
- * are not written yet. A running dashboard therefore serves an empty registry
- * and renders no card.
- */
-export const includedCardTemplates: Record<
-  CardTemplateName,
-  CardTemplate<unknown>
-> = {};
+const components: Record<string, ComponentType<{ data: unknown }>> = {
+  message: MessageCard as ComponentType<{ data: unknown }>,
+};
 
-/**
- * Which source file each template's export lives in — several templates can
- * share one file, so the registry endpoint (src/server/registry.ts) reads this
- * rather than guessing `<name>.tsx`. Kept beside `includedCardTemplates` so the
- * two cannot drift.
- */
-export const cardTemplateSourceFiles: Record<CardTemplateName, string> = {};
+function toCardTemplate(
+  entry: CardTemplateManifestEntry,
+): CardTemplate<unknown> {
+  const Component = components[entry.name];
+  if (!Component) {
+    throw new Error(`Missing card template component: ${entry.name}`);
+  }
+  return { schema: entry.schema, Component };
+}
+
+/** The active manifest is the source of truth for renderable templates. */
+export const includedCardTemplates: Record<
+  CardTemplateName | string,
+  CardTemplate<unknown>
+> = Object.fromEntries(
+  Object.entries(activeCardTemplateManifest).map(([name, entry]) => [
+    name,
+    toCardTemplate(entry),
+  ]),
+);
+
+/** Compatibility view used by registry tests and callers that need a path. */
+export const cardTemplateSourceFiles: Record<string, string> =
+  Object.fromEntries(
+    Object.entries(activeCardTemplateManifest).map(([name, entry]) => [
+      name,
+      entry.sourceFile,
+    ]),
+  );

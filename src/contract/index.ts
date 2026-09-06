@@ -359,11 +359,17 @@ export const mutationRequirements = {
 export const defaultDashboardConfiguration: DashboardConfiguration = {
   integrations: [],
   themes: [{ id: "calm", settings: {} }],
-  dashboard: { id: "home", cards: [], theme: "calm" },
+  dashboard: { id: "home", cards: ["welcome"], theme: "calm" },
   fontScale: 1,
-  // No cards: every card template was deleted in D32 and none has been
-  // rebuilt on shadcn yet, so there is nothing a default card could render.
-  cards: [],
+  cards: [
+    {
+      id: "welcome",
+      title: "Welcome",
+      template: "message",
+      state: { message: "Welcome to your dashboard." },
+      queries: [],
+    },
+  ],
 };
 
 function assertUnique(values: string[], label: string): void {

@@ -2,6 +2,7 @@ import { afterAll, beforeAll } from "vitest";
 import * as z from "zod/v4";
 
 import { cardTemplateSchemas, type DashboardConfiguration } from "../contract";
+import { activeCardTemplateManifest } from "../card-templates/manifest";
 import { cardTemplateSourceFiles, includedCardTemplates } from "../client/cards";
 
 /**
@@ -9,11 +10,8 @@ import { cardTemplateSourceFiles, includedCardTemplates } from "../client/cards"
  *
  * The five that shipped were deleted in D32 — they rendered raw HTML with no
  * styling and were not a base to build shadcn templates on — so
- * `cardTemplateSchemas` is empty until replacements are written. Tests about
- * the service, the contract, and the registry are not about *which* templates
- * ship; they need only that some template exists. Their schemas are kept here,
- * out of the shipped product, so that coverage survives the deletion instead
- * of being deleted with it.
+ * Tests about the service, the contract, and the registry may register fixture
+ * templates without changing the shipped manifest.
  */
 export const testCardTemplateSchemas: Record<string, z.ZodType<unknown>> = {
   message: z.object({ message: z.string() }).strict(),
@@ -72,19 +70,44 @@ export const testCardTemplateSchemas: Record<string, z.ZodType<unknown>> = {
  * because the registry endpoint reads an item's content off disk.
  */
 export function useTestCardTemplates(sourceFile = "CardView.tsx"): void {
+  const originals = new Map(
+    Object.keys(testCardTemplateSchemas).map((name) => [
+      name,
+      {
+        schema: cardTemplateSchemas[name],
+        sourceFile: cardTemplateSourceFiles[name],
+        template: includedCardTemplates[name],
+        manifest: activeCardTemplateManifest[name],
+      },
+    ]),
+  );
   beforeAll(() => {
     for (const [name, schema] of Object.entries(testCardTemplateSchemas)) {
       cardTemplateSchemas[name] = schema;
       cardTemplateSourceFiles[name] = sourceFile;
       includedCardTemplates[name] = { schema, Component: () => null };
+      activeCardTemplateManifest[name] = {
+        name,
+        type: "registry:block",
+        title: name,
+        sourceFile,
+        schema,
+        jsonSchema: { type: "object" },
+      };
     }
   });
 
   afterAll(() => {
     for (const name of Object.keys(testCardTemplateSchemas)) {
-      delete cardTemplateSchemas[name];
-      delete cardTemplateSourceFiles[name];
-      delete includedCardTemplates[name];
+      const original = originals.get(name);
+      if (original?.schema) cardTemplateSchemas[name] = original.schema;
+      else delete cardTemplateSchemas[name];
+      if (original?.sourceFile) cardTemplateSourceFiles[name] = original.sourceFile;
+      else delete cardTemplateSourceFiles[name];
+      if (original?.template) includedCardTemplates[name] = original.template;
+      else delete includedCardTemplates[name];
+      if (original?.manifest) activeCardTemplateManifest[name] = original.manifest;
+      else delete activeCardTemplateManifest[name];
     }
   });
 }

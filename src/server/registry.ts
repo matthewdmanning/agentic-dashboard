@@ -1,19 +1,14 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  cardTemplateSourceFiles,
-  includedCardTemplates,
-} from "../client/cards";
+import { activeCardTemplateManifest } from "../card-templates/manifest";
 
 /**
  * Serves this dashboard's card templates (D22) as a shadcn-compatible
  * registry (https://ui.shadcn.com/docs/registry/mcp): the index at
  * `/r/registry.json`, each template's built payload at `/r/<name>.json`.
- * `includedCardTemplates` (src/client/cards/index.ts) is the source of
- * truth for which templates are real, wired-in items — not a directory
- * scan, which would also catch CardView.tsx, index.ts, tests, and
- * in-flight `__assemble-*` files from a concurrent assembly.
+ * The active manifest is the source of truth for which templates are real,
+ * paired with their JSON Schema and client source file.
  */
 
 const REGISTRY_NAME = "agentic-dashboard";
@@ -40,18 +35,11 @@ interface RegistryItem {
   registryDependencies?: string[];
 }
 
-function templateSourceFile(templateName: string): string {
-  return cardTemplateSourceFiles[
-    templateName as keyof typeof cardTemplateSourceFiles
-  ];
-}
-
-function templateSourcePath(templateName: string): string {
-  return `src/client/cards/${templateSourceFile(templateName)}`;
-}
-
 async function readTemplateSource(templateName: string): Promise<string> {
-  return readFile(join(cardTemplatesDir, templateSourceFile(templateName)), "utf8");
+  return readFile(
+    join(cardTemplatesDir, activeCardTemplateManifest[templateName].sourceFile),
+    "utf8",
+  );
 }
 
 /**
@@ -79,8 +67,9 @@ async function buildRegistryItem(
   { includeContent }: { includeContent: boolean },
 ): Promise<RegistryItem> {
   const source = await readTemplateSource(templateName);
+  const manifestEntry = activeCardTemplateManifest[templateName];
   const { dependencies, registryDependencies } = deriveDependencies(source);
-  const path = templateSourcePath(templateName);
+  const path = `src/client/cards/${manifestEntry.sourceFile}`;
   return {
     name: templateName,
     type: "registry:block",
@@ -100,7 +89,7 @@ async function buildRegistryItem(
 
 async function buildRegistryIndex() {
   const items = await Promise.all(
-    Object.keys(includedCardTemplates).map((name) =>
+    Object.keys(activeCardTemplateManifest).map((name) =>
       buildRegistryItem(name, { includeContent: false }),
     ),
   );
@@ -126,7 +115,7 @@ export async function handleRegistryRequest(
   const match = ITEM_PATH_PATTERN.exec(pathname);
   if (match) {
     const [, name] = match;
-    if (!(name in includedCardTemplates)) {
+    if (!(name in activeCardTemplateManifest)) {
       return Response.json({ message: "Item not found" }, { status: 404 });
     }
     return Response.json(

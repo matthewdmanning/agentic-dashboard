@@ -11,9 +11,7 @@ import { includedCardTemplates } from "./index";
  * One card that does not fit its template says so where it sits rather than
  * taking the dashboard down with it.
  *
- * A template the dashboard does not have is reported the same way. That is the
- * whole of `includedCardTemplates` today (D32), so every card says so until the
- * shadcn templates land.
+ * A template the dashboard does not have is reported the same way.
  */
 export function CardView({
   template,
