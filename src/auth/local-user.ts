@@ -44,7 +44,7 @@ const execFileAsync = promisify(execFile);
  * token still authenticates; what is lost is the file's protection, which
  * matters only where another account shares the machine.
  */
-async function restrictToOwner(path: string): Promise<void> {
+export async function restrictToOwner(path: string): Promise<void> {
   try {
     if (process.platform !== "win32") {
       await chmod(path, 0o600);

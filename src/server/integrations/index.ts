@@ -1,6 +1,7 @@
-import { compileFormatterSpec, type Integration } from "../../contract";
+import { compileCardMapper, type CardMapper, type Integration } from "../../contract";
 import type { DashboardService } from "../../service";
 import type { StoredQuery } from "../../service/queries";
+import { identityCardMapper } from "../../client/card-mappers/identity";
 import { pullGoogleCalendar, type FetchCalendar } from "./google-calendar";
 
 /**
@@ -43,12 +44,27 @@ export interface QueryRefresh {
 }
 
 /**
+ * Resolves a query's `cardMapper` name to the function it names. `"identity"`
+ * is the built-in, source-only mapper (CONTEXT.md) and never resolves
+ * against the shared store; any other name resolves against `cardMappers`,
+ * the store `service` reads for the caller (D38).
+ */
+function resolveCardMapper(
+  cardMappers: readonly CardMapper[],
+  name: string,
+): ((input: unknown) => unknown) | undefined {
+  if (name === "identity") return identityCardMapper;
+  const mapper = cardMappers.find((candidate) => candidate.name === name);
+  return mapper ? compileCardMapper(mapper.spec) : undefined;
+}
+
+/**
  * Runs a set of queries — the caller's own, resolved from their private store
- * (D32) — pulling each one's integration, shaping the result with its
- * formatter, and applying it as its card's new state through `service.apply`.
- * Nothing else persists a pull — a pulled result is transient (fetch, format,
- * apply, discard); if a formatter changes, re-pull. One query's failure does
- * not stop the rest.
+ * (D32) — pulling each one's integration, shaping the result with the card
+ * mapper it names, resolved against the shared store (D38), and applying it
+ * as its card's new state through `service.apply`. Nothing else persists a
+ * pull — a pulled result is transient (fetch, map, apply, discard); if a
+ * mapper changes, re-pull. One query's failure does not stop the rest.
  *
  * Card state stays shared (D30): when two users' queries feed the same card,
  * whichever refresh's `patch-card-state` lands last is what everyone sees —
@@ -58,6 +74,7 @@ export interface QueryRefresh {
 export async function refreshCardQueries(
   queries: readonly StoredQuery[],
   integrations: readonly Integration[],
+  cardMappers: readonly CardMapper[],
   context: PullContext & { service: DashboardService; credential?: string },
 ): Promise<QueryRefresh[]> {
   const refreshes: QueryRefresh[] = [];
@@ -81,9 +98,19 @@ export async function refreshCardQueries(
       continue;
     }
 
+    const mapper = resolveCardMapper(cardMappers, query.cardMapper);
+    if (!mapper) {
+      refreshes.push({
+        cardId: query.cardId,
+        status: "failed",
+        message: `Unknown card mapper: ${query.cardMapper}`,
+      });
+      continue;
+    }
+
     try {
       const source = await pull(integration, query.query, context);
-      const patch = compileFormatterSpec(query.formatter)(source);
+      const patch = mapper(source);
       await context.service.apply(
         [{ type: "patch-card-state", cardId: query.cardId, patch }],
         context.credential,

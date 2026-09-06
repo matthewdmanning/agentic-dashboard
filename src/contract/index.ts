@@ -113,7 +113,7 @@ const fieldSpecSchema = z
   })
   .strict();
 
-export const formatterSpecSchema = z.discriminatedUnion("shape", [
+export const cardMapperSpecSchema = z.discriminatedUnion("shape", [
   z
     .object({
       shape: z.literal("object"),
@@ -130,8 +130,23 @@ export const formatterSpecSchema = z.discriminatedUnion("shape", [
     .strict(),
 ]);
 
-export type FormatterSpec = z.infer<typeof formatterSpecSchema>;
+export type CardMapperSpec = z.infer<typeof cardMapperSpecSchema>;
 type FieldSpec = z.infer<typeof fieldSpecSchema>;
+
+/**
+ * A card mapper stored in the shared store (D38): a declarative mapping spec,
+ * named, with the resolved caller who added it recorded as `owner`. A query
+ * references one by `name` rather than holding a copy.
+ */
+export const cardMapperSchema = z
+  .object({
+    name: z.string().min(1),
+    owner: z.string().min(1),
+    spec: cardMapperSpecSchema,
+  })
+  .strict();
+
+export type CardMapper = z.infer<typeof cardMapperSchema>;
 
 /**
  * A card template's component as data (D22): a tree of real shadcn/ui
@@ -139,7 +154,7 @@ type FieldSpec = z.infer<typeof fieldSpecSchema>;
  * no enum of component names, no per-component prop schema (an earlier draft
  * duplicated the library's own types and drifted; `tsc --noEmit` on the
  * assembled output is the correctness check, not this schema). Same
- * reasoning as `formatterSpecSchema`: closed on shape, open on domain fields.
+ * reasoning as `cardMapperSpecSchema`: closed on shape, open on domain fields.
  */
 export interface CompositionNode {
   component: string;
@@ -157,7 +172,10 @@ export const querySchema = z
   .object({
     integration: z.string().min(1),
     query: z.unknown(),
-    formatter: formatterSpecSchema,
+    // Names a card mapper in the shared store (D38) rather than holding a
+    // spec inline. `"identity"` names the built-in, source-only mapper and
+    // never resolves against the store.
+    cardMapper: z.string().min(1),
   })
   .strict();
 
@@ -191,6 +209,9 @@ export const dashboardConfigurationSchema = z
     dashboard: dashboardSchema,
     fontScale: z.number().min(0.75).max(2),
     cards: z.array(cardSchema),
+    // The shared card mapper store (D38): a query names one of these by
+    // `name` rather than holding a copy.
+    cardMappers: z.array(cardMapperSchema),
   })
   .strict();
 
@@ -308,6 +329,44 @@ const removeThemeMutationSchema = z
   .strict();
 
 /**
+ * Adding is ungated by structure (D38): the resolved caller becomes the
+ * mapper's `owner`, never a payload field, the same reasoning `addQuery`
+ * uses for a query's owner. `mutationRequirements` still carries an entry
+ * (a `noAccess` floor, which every role clears) so the type stays in the
+ * exhaustive `Mutation` union `apply` enforces against.
+ */
+const addCardMapperMutationSchema = z
+  .object({
+    type: z.literal("add-card-mapper"),
+    name: z.string().min(1),
+    spec: cardMapperSpecSchema,
+  })
+  .strict();
+
+/**
+ * Replaces a stored mapper's spec, keeping its name and owner. Whether this
+ * needs only ownership or `cards: write` depends on whether the mapper is
+ * currently referenced by any query — runtime state `service` alone can
+ * check, so the conditional gate lives there, the same way `remove-card`'s
+ * extra `presentation: write` check does.
+ */
+const editCardMapperMutationSchema = z
+  .object({
+    type: z.literal("edit-card-mapper"),
+    name: z.string().min(1),
+    spec: cardMapperSpecSchema,
+  })
+  .strict();
+
+/** Fails with `in-use` in `service` when any query still names it (D38). */
+const removeCardMapperMutationSchema = z
+  .object({
+    type: z.literal("remove-card-mapper"),
+    name: z.string().min(1),
+  })
+  .strict();
+
+/**
  * D22's one card-template capability the service has: assemble a template's
  * component from a composition tree. An ordinary mutation, not a separate
  * operation like `authorize` — `authorize` is separate because it writes to
@@ -346,6 +405,9 @@ export const mutationSchema = z.discriminatedUnion("type", [
   editIntegrationMutationSchema,
   removeIntegrationMutationSchema,
   assembleCardTemplateMutationSchema,
+  addCardMapperMutationSchema,
+  editCardMapperMutationSchema,
+  removeCardMapperMutationSchema,
 ]);
 
 export type Mutation = z.infer<typeof mutationSchema>;
@@ -377,6 +439,14 @@ export const mutationRequirements = {
   "edit-integration": { category: "integrations", level: "edit" },
   "remove-integration": { category: "integrations", level: "write" },
   "assemble-card-template": { category: "cards", level: "write" },
+  // A floor only — real enforcement is ownership- and reference-conditional
+  // and lives in `service` (D38): adding is always ungated, editing or
+  // removing an unreferenced mapper needs only ownership, and only a
+  // referenced mapper falls back to `cards: write` (never for removal,
+  // which always fails `in-use` instead).
+  "add-card-mapper": { category: "cards", level: "noAccess" },
+  "edit-card-mapper": { category: "cards", level: "noAccess" },
+  "remove-card-mapper": { category: "cards", level: "noAccess" },
 } as const satisfies Record<Mutation["type"], MutationRequirement>;
 
 export const defaultDashboardConfiguration: DashboardConfiguration = {
@@ -392,6 +462,7 @@ export const defaultDashboardConfiguration: DashboardConfiguration = {
       state: { message: "Welcome to your dashboard." },
     },
   ],
+  cardMappers: [],
 };
 
 function assertUnique(values: string[], label: string): void {
@@ -416,6 +487,10 @@ export function parseDashboardConfiguration(
   assertUnique(
     configuration.cards.map(({ id }) => id),
     "card id",
+  );
+  assertUnique(
+    configuration.cardMappers.map(({ name }) => name),
+    "card mapper name",
   );
   const cardIds = new Set(configuration.cards.map(({ id }) => id));
   const themeIds = new Set(configuration.themes.map(({ id }) => id));
@@ -497,8 +572,8 @@ function applyFields(
   return result;
 }
 
-export function compileFormatterSpec(
-  spec: FormatterSpec,
+export function compileCardMapper(
+  spec: CardMapperSpec,
 ): (input: unknown) => unknown {
   if (spec.shape === "object") {
     return (input) => applyFields(input, spec.fields);

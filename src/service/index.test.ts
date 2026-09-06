@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import { randomBytes } from "node:crypto";
 import { tmpdir, userInfo } from "node:os";
 import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -6,18 +7,20 @@ import { join } from "node:path";
 import {
   defaultDashboardConfiguration,
   roles,
+  type CardMapperSpec,
   type DashboardConfiguration,
   type Mutation,
   type Role,
 } from "../contract";
 import type { CredentialStore } from "../server/integrations/credentials";
 import { createFileIntegrationCatalog } from "../server/integrations/catalog";
+import { createSecretBox } from "../server/secret-box";
 import {
   createService,
   resolveCaller,
   type DashboardPersistence,
 } from "./index";
-import { createFileUserQueryStore, type NewQuery } from "./queries";
+import { createEncryptedQueryStore, type NewQuery } from "./queries";
 import {
   useTestCardTemplates,
   withTestCard,
@@ -292,6 +295,7 @@ describe("dashboard service", () => {
 
     await expect(service.read("all")).resolves.toEqual({
       cards: testConfiguration.cards,
+      cardMappers: testConfiguration.cardMappers,
       dashboard: testConfiguration.dashboard,
       themes: testConfiguration.themes,
       fontScale: testConfiguration.fontScale,
@@ -890,8 +894,10 @@ describe("file-backed integration catalog", () => {
 
 describe("user-owned queries", () => {
   async function createQueryStore() {
-    return createFileUserQueryStore(
-      await mkdtemp(join(tmpdir(), "user-queries-")),
+    const dir = await mkdtemp(join(tmpdir(), "user-queries-"));
+    return createEncryptedQueryStore(
+      join(dir, "queries.json"),
+      createSecretBox(randomBytes(32)),
     );
   }
 
@@ -899,7 +905,7 @@ describe("user-owned queries", () => {
     cardId: "welcome",
     integration: "calendar",
     query: { calendarId: "team" },
-    formatter: { shape: "object", fields: {} },
+    cardMapper: "identity",
   };
 
   function twoUserAuthStore() {
@@ -1047,5 +1053,218 @@ describe("user-owned queries", () => {
     await expect(service.read("cards")).resolves.toMatchObject([
       { state: { message: "Bob's refresh" } },
     ]);
+  });
+});
+
+describe("card mapper store", () => {
+  async function createQueryStore() {
+    const dir = await mkdtemp(join(tmpdir(), "user-queries-"));
+    return createEncryptedQueryStore(
+      join(dir, "queries.json"),
+      createSecretBox(randomBytes(32)),
+    );
+  }
+
+  function twoUserAuthStore() {
+    return {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : credential === "admin-token"
+              ? { user: "root", role: "admin" }
+              : undefined,
+    };
+  }
+
+  const spec: CardMapperSpec = {
+    shape: "object",
+    fields: { title: { from: ["summary"] } },
+  };
+
+  test("two queries naming one mapper resolve to the same stored spec", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries: await createQueryStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply(
+      [{ type: "add-card-mapper", name: "events", spec }],
+      "alice-token",
+    );
+    await service.addQuery(
+      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      "alice-token",
+    );
+    await service.addQuery(
+      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      "bob-token",
+    );
+
+    // One stored mapper, not one copy per query — both queries name it.
+    await expect(service.read("cardMappers", "alice-token")).resolves.toEqual([
+      { name: "events", owner: "alice", spec },
+    ]);
+    const [aliceQueries, bobQueries] = await Promise.all([
+      service.read("queries", "alice-token"),
+      service.read("queries", "bob-token"),
+    ]);
+    expect(aliceQueries[0]?.cardMapper).toBe("events");
+    expect(bobQueries[0]?.cardMapper).toBe("events");
+  });
+
+  test("a user can add a mapper but cannot edit another user's mapper", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries: await createQueryStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply(
+      [{ type: "add-card-mapper", name: "events", spec }],
+      "alice-token",
+    );
+
+    await expect(
+      service.apply(
+        [{ type: "edit-card-mapper", name: "events", spec: { shape: "object", fields: {} } }],
+        "bob-token",
+      ),
+    ).rejects.toThrow("cards: write");
+
+    await expect(service.read("cardMappers", "alice-token")).resolves.toEqual([
+      { name: "events", owner: "alice", spec },
+    ]);
+  });
+
+  test("adding a card mapper under a name already present fails rather than overwriting", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries: await createQueryStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply(
+      [{ type: "add-card-mapper", name: "events", spec }],
+      "alice-token",
+    );
+
+    await expect(
+      service.apply(
+        [
+          {
+            type: "add-card-mapper",
+            name: "events",
+            spec: { shape: "object", fields: { extra: { from: ["x"] } } },
+          },
+        ],
+        "bob-token",
+      ),
+    ).rejects.toThrow("Duplicate");
+
+    await expect(service.read("cardMappers", "alice-token")).resolves.toEqual([
+      { name: "events", owner: "alice", spec },
+    ]);
+  });
+
+  test("removing a referenced card mapper returns in-use and leaves the mapper and its queries intact", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries: await createQueryStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply(
+      [{ type: "add-card-mapper", name: "events", spec }],
+      "alice-token",
+    );
+    const query = await service.addQuery(
+      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      "alice-token",
+    );
+
+    // Even an administrator cannot force it through — removal never
+    // cascades into the private query that references it (D38).
+    await expect(
+      service.apply([{ type: "remove-card-mapper", name: "events" }], "admin-token"),
+    ).rejects.toMatchObject({ code: "in-use" });
+
+    await expect(service.read("cardMappers", "alice-token")).resolves.toEqual([
+      { name: "events", owner: "alice", spec },
+    ]);
+    await expect(service.read("queries", "alice-token")).resolves.toEqual([
+      query,
+    ]);
+  });
+
+  test("editing a referenced card mapper requires cards: write, even for its owner", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries: await createQueryStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply(
+      [{ type: "add-card-mapper", name: "events", spec }],
+      "alice-token",
+    );
+    await service.addQuery(
+      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      "alice-token",
+    );
+
+    await expect(
+      service.apply(
+        [{ type: "edit-card-mapper", name: "events", spec: { shape: "object", fields: {} } }],
+        "alice-token",
+      ),
+    ).rejects.toThrow("cards: write");
+
+    await expect(
+      service.apply(
+        [{ type: "edit-card-mapper", name: "events", spec: { shape: "object", fields: {} } }],
+        "admin-token",
+      ),
+    ).resolves.toBeDefined();
+
+    await expect(service.read("cardMappers", "alice-token")).resolves.toEqual([
+      { name: "events", owner: "alice", spec: { shape: "object", fields: {} } },
+    ]);
+  });
+
+  test("an owner may edit or remove their own unreferenced mapper without cards: write", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      queries: await createQueryStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply(
+      [{ type: "add-card-mapper", name: "events", spec }],
+      "alice-token",
+    );
+
+    await expect(
+      service.apply(
+        [
+          {
+            type: "edit-card-mapper",
+            name: "events",
+            spec: { shape: "object", fields: { x: { from: ["y"] } } },
+          },
+        ],
+        "alice-token",
+      ),
+    ).resolves.toBeDefined();
+
+    await expect(
+      service.apply([{ type: "remove-card-mapper", name: "events" }], "alice-token"),
+    ).resolves.toBeDefined();
+
+    await expect(service.read("cardMappers", "alice-token")).resolves.toEqual(
+      [],
+    );
   });
 });

@@ -395,17 +395,15 @@ A query is visible to the user who supplied it and to nobody else. Query _result
 
 The reason is that a query is revealing in a way its result is not. A shared calendar card says what is on the calendar; the query behind it says whose calendar, filtered how, searched for what. D29 made results common deliberately. It did not intend to make every user's search terms common as a side effect.
 
-The storage boundary does this work directly (D32): a caller reading their own user data reads their own queries, and there is nothing of anyone else's to filter out.
+D41 says how this is enforced: one store holds every user's queries, the revealing fields are encrypted at rest, and a read returns only the caller's own.
 
 Refresh runs server-side under each query's owner's token (D30), so what a caller can read does not stop another user's queries from running.
 
-### D32 — Queries live with user data; the assembler emits registry items
+### D32 — A card carries no queries; the assembler emits registry items
 
-Decided 2026-09-04.
+Decided 2026-09-04. Storage mechanism revised 2026-09-06 by D41.
 
-**Queries live with user data.** A query is stored with the user who supplied it, not on the card. A card carries no queries at all. Only the owning user reaches their queries; the one exception is deletion, which `admin` may also do (D35). Nothing else reaches them — not read, not edit.
-
-This makes D31's privacy outcome structural rather than enforced by filtering. There is no shared object holding another user's queries, so there is nothing to redact on read.
+**A card carries no queries.** A query belongs to the user who supplied it, never to the card it feeds. Only the owning user reaches their queries; the one exception is deletion, which `admin` may also do (D35). Nothing else reaches them — not read, not edit. Where those queries are stored is D41.
 
 **The card-template assembler emits registry items paired with JSON Schemas.**
 `assemble-card-template` (D22) produces a registry item conforming to the
@@ -707,3 +705,36 @@ deleted.
 
 Expiry runs when the application starts and when a connection changes. No
 background scheduler exists for this policy.
+
+### D41 — Every user's queries live in one encrypted store
+
+Decided 2026-09-06. Supersedes D32's storage mechanism; D31's outcome is unchanged.
+
+One store holds every user's queries. A query keeps a cleartext envelope — its
+id, its owner, the card mapper it names, and the card it feeds — and encrypts
+the two things D31 calls private: which integration the user draws from, and
+what they ask it for. Encryption is AES-256-GCM under a host-held key kept
+outside the data directory, bound to the owning user so one user's ciphertext
+cannot be replayed as another's. Decryption happens in memory, when a refresh
+needs the query.
+
+The envelope is cleartext because none of it is what D31 protects. A card
+mapper's name is already shared project state (D38), so knowing a query names
+one reveals a link rather than a secret.
+
+This costs something real. D32 made privacy structural: separate per-user
+stores meant no shared object held another user's queries, so nothing had to be
+redacted on read. One store reverses that. Privacy is now at-rest encryption
+plus an access check, and the server holds the key because refresh must decrypt
+to run — so this protects a stolen data directory, not against the server
+itself.
+
+It buys a single source of knowledge. Whether a card mapper is still referenced
+(D38), whether a dynamic catalog entry is unused (D40), and who is affected when
+an integration is blocked or force-removed (D40) are all questions across every
+user's queries. Separate per-user stores could not answer them without reading
+across the boundary D31 draws.
+
+The same encryption seam serves connection credentials (D28), which have the
+same shape: a per-user secret the server must use but should not store in the
+clear.

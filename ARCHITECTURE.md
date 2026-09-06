@@ -52,7 +52,7 @@ The module map above is the target cut. The rewrite lands issue by issue, so par
 
 One card template is wired in: `message`, at `src/client/cards/message.tsx`, named by the default configuration's `welcome` card and served by the registry. The five that shipped before were deleted (D32); their schemas were kept for tests at `src/test-support/card-template.ts`. Writing another is ordinary work against a mechanism that is already here.
 
-Further gaps between the decisions and the tree: a query still carries its own inline mapper, under the old name `formatter`; and `fontScale` still sits in dashboard configuration. [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the full list, phased.
+Further gaps between the decisions and the tree: `fontScale` still sits in dashboard configuration. [`agent-docs/implementation-spec.md`](agent-docs/implementation-spec.md) is the full list, phased.
 
 Delete this section when the last module lands.
 
@@ -123,7 +123,7 @@ Data reaches the screen through a fixed path:
 
 The card mapper runs on the way in, not at render time, so a card is never persisted with data its template cannot render, and rendering is a straight read with no transform.
 
-Several users share one dashboard, each contributing through their own authorized integrations, through manual edits, and through an agent acting on their behalf (D29). All three arrive as mutations against card state, so no path is privileged over another. A query is stored with its owner's user data, and the adapter is passed that user's secret when an update fires (D30, D32). A result entering through one user's token becomes card state every user sees — a deliberate posture, not an oversight: authorizing an integration contributes its data to a shared surface. When two users' queries write the same card, the last write wins.
+Several users share one dashboard, each contributing through their own authorized integrations, through manual edits, and through an agent acting on their behalf (D29). All three arrive as mutations against card state, so no path is privileged over another. A query lives in the one shared query store, its integration and parameters encrypted at rest under its owner (D41), and the adapter is passed that user's secret when an update fires (D30). A result entering through one user's token becomes card state every user sees — a deliberate posture, not an oversight: authorizing an integration contributes its data to a shared surface. When two users' queries write the same card, the last write wins.
 
 ## Service surface
 
@@ -157,7 +157,7 @@ sees a persistent notice. An administrator can force removal after a high-level
 warning; credentials are destroyed and private queries become unavailable
 rather than being deleted (D40).
 
-Queries are stored with user data, not on a card (D32). Only the owning user reaches them; `admin` may additionally delete them. Because no shared object holds another user's queries, the privacy D31 requires falls out of the storage boundary rather than from filtering on read.
+Queries live in one shared store, not on a card (D32, D41). Only the owning user reaches them; `admin` may additionally delete them. The privacy D31 requires comes from encrypting each query's integration and parameters under its owner and decrypting only in memory when a refresh needs it, rather than from which file a query sits in.
 
 `read("role")` returns the caller's own resolved role and is never gated — a caller may always see what it may do, which is not the same as reading the role list.
 

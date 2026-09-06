@@ -39,6 +39,7 @@ import {
   parseDashboardConfiguration,
   roles,
   type Card,
+  type CardMapper,
   type Dashboard,
   type DashboardConfiguration,
   type Integration,
@@ -101,6 +102,8 @@ export interface ReadScopes {
    * (D35) — so this is never checked against the permission matrix.
    */
   queries: StoredQuery[];
+  /** The shared card mapper store (D38). Gated at `cards: read`, like `cards` itself. */
+  cardMappers: CardMapper[];
 }
 
 export type ReadScope = keyof ReadScopes;
@@ -342,7 +345,9 @@ async function readState<Scope extends ReadScope>(
   const role = caller.role;
 
   if (scope !== "all" && scope !== "role" && scope !== "queries") {
-    requireRead(role, scope);
+    // Card mappers ride under the `cards` category (D20) rather than having
+    // their own; there is no `cardMappers` permission level to check.
+    requireRead(role, scope === "cardMappers" ? "cards" : scope);
   }
 
   // Built per scope, not all at once: `all` refuses a role that may read
@@ -365,6 +370,7 @@ async function readState<Scope extends ReadScope>(
     // Ungated (D35): a user's own queries are theirs by structure, and there
     // is nothing of anyone else's in this file to filter out (D31).
     queries: () => (caller.user ? requireQueryStore(dependencies).list(caller.user) : []),
+    cardMappers: () => configuration.cardMappers,
   };
 
   return scoped[scope]();
@@ -394,6 +400,11 @@ function projectReadable(
   // card state without the cards themselves.
   if (role.permissions.cards !== "noAccess" || role.permissions.data !== "noAccess") {
     readable.cards = configuration.cards;
+  }
+  // Card mappers ride under `cards` (D20), not `data` — card state and card
+  // mappers are different owners in the same table row.
+  if (role.permissions.cards !== "noAccess") {
+    readable.cardMappers = configuration.cardMappers;
   }
   if (role.permissions.presentation !== "noAccess") {
     readable.dashboard = configuration.dashboard;
@@ -434,6 +445,54 @@ async function applyMutations(
     ) {
       requireLevel(role, "presentation", "write");
     }
+
+    // Adding a card mapper is ungated by structure (D38) — the resolved
+    // caller becomes its owner, so there must be a caller to own it.
+    if (mutation.type === "add-card-mapper" && !caller.user) {
+      throw new ServiceFailure(
+        "permission-denied",
+        "No caller identity to own a card mapper",
+      );
+    }
+
+    // Editing or removing needs the mapper's current owner and whether any
+    // private query still references it (D38) — both runtime facts
+    // `mutationRequirements`'s static table can't express.
+    if (mutation.type === "edit-card-mapper" || mutation.type === "remove-card-mapper") {
+      const existing = configuration.cardMappers.find(
+        ({ name }) => name === mutation.name,
+      );
+      if (!existing) {
+        throw new ServiceFailure(
+          "unknown-id",
+          `Unknown card mapper: ${mutation.name}`,
+        );
+      }
+      const referenced = dependencies.queries
+        ? await dependencies.queries.isReferencedByAnyQuery(mutation.name)
+        : false;
+
+      // Removing a referenced mapper always fails, for every caller
+      // including an administrator — never a permission this check can
+      // waive (D38) — and never touches the private queries that reference
+      // it.
+      if (mutation.type === "remove-card-mapper" && referenced) {
+        throw new ServiceFailure(
+          "in-use",
+          `Card mapper '${mutation.name}' is referenced by a query`,
+        );
+      }
+
+      // An owner may edit or remove their own unreferenced mapper with no
+      // permission check at all (D38, like a query). Every other case —
+      // someone else's mapper, or a referenced one — falls back to
+      // `cards: write`.
+      const ownerActingOnUnreferenced =
+        existing.owner === caller.user && !referenced;
+      if (!ownerActingOnUnreferenced) {
+        requireLevel(role, "cards", "write");
+      }
+    }
   }
 
   // Real filesystem writes, unlike the in-memory mutations below. Every
@@ -455,7 +514,7 @@ async function applyMutations(
   try {
     const candidate = structuredClone({ ...configuration, integrations });
     for (const mutation of mutations) {
-      applyMutation(candidate, mutation, dependencies.catalog !== undefined);
+      applyMutation(candidate, mutation, dependencies.catalog !== undefined, caller.user);
     }
     next = parseDashboardConfiguration(candidate);
     await dependencies.persistence.write(
@@ -683,6 +742,8 @@ function applyMutation(
   configuration: DashboardConfiguration,
   mutation: Mutation,
   catalogBacked = false,
+  /** The resolved caller, recorded as a new card mapper's owner (D38). */
+  owner?: string,
 ): void {
   switch (mutation.type) {
     case "patch-card-state": {
@@ -797,6 +858,29 @@ function applyMutation(
       // before this loop runs — nothing left to change on the configuration
       // itself (#76 registers the template's schema so cards can reference
       // it).
+      return;
+    case "add-card-mapper":
+      // Permission-checked above (ungated, but needs a caller identity) —
+      // `owner` is guaranteed defined by the time this runs.
+      addByName(
+        configuration.cardMappers,
+        { name: mutation.name, owner: owner!, spec: mutation.spec },
+        "card mapper",
+      );
+      return;
+    case "edit-card-mapper": {
+      const mapper = requireByName(
+        configuration.cardMappers,
+        mutation.name,
+        "card mapper",
+      );
+      mapper.spec = mutation.spec;
+      return;
+    }
+    case "remove-card-mapper":
+      configuration.cardMappers = configuration.cardMappers.filter(
+        ({ name }) => name !== mutation.name,
+      );
       return;
   }
 }
@@ -934,6 +1018,31 @@ function replaceById<T extends { id: string }>(
     );
   }
   values[index] = replacement;
+}
+
+/** Same as `addById`, keyed by `name` — card mappers are addressed by name, not id (D38). */
+function addByName<T extends { name: string }>(
+  values: T[],
+  addition: T,
+  label: string,
+): void {
+  if (values.some(({ name }) => name === addition.name)) {
+    throw new ServiceFailure(
+      "duplicate-id",
+      `Duplicate ${label}: ${addition.name}`,
+    );
+  }
+  values.push(addition);
+}
+
+function requireByName<T extends { name: string }>(
+  values: T[],
+  name: string,
+  label: string,
+): T {
+  const value = values.find((candidate) => candidate.name === name);
+  if (!value) throw new ServiceFailure("unknown-id", `Unknown ${label}: ${name}`);
+  return value;
 }
 
 function removeById<T extends { id: string }>(

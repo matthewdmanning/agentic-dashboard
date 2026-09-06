@@ -66,6 +66,10 @@ function createMemoryUserQueryStore(): UserQueryStore {
       values.set(user, remaining);
       return true;
     },
+    isReferencedByAnyQuery: async (mapperName) =>
+      [...values.values()].some((entries) =>
+        entries.some((entry) => entry.cardMapper === mapperName),
+      ),
   };
 }
 
@@ -95,6 +99,7 @@ describe("dashboard service HTTP transport", () => {
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       cards: defaultDashboardConfiguration.cards,
+      cardMappers: defaultDashboardConfiguration.cardMappers,
       dashboard: defaultDashboardConfiguration.dashboard,
       themes: defaultDashboardConfiguration.themes,
       fontScale: defaultDashboardConfiguration.fontScale,
@@ -183,19 +188,21 @@ describe("dashboard service HTTP transport", () => {
 describe("integration refresh endpoint", () => {
   useTestCardTemplates();
 
+  const calendarMapperSpec = {
+    shape: "array" as const,
+    from: ["items"],
+    into: "events",
+    fields: {
+      id: { from: ["id"], coerce: "string" as const },
+      title: { from: ["summary"], default: "Untitled event" },
+      start: { from: ["start.dateTime"] },
+    },
+  };
+
   const calendarQuery = {
     integration: "team-calendar",
     query: { calendarId: "team" },
-    formatter: {
-      shape: "array" as const,
-      from: ["items"],
-      into: "events",
-      fields: {
-        id: { from: ["id"], coerce: "string" as const },
-        title: { from: ["summary"], default: "Untitled event" },
-        start: { from: ["start.dateTime"] },
-      },
-    },
+    cardMapper: "events",
   };
 
   test("runs the caller's own queries through the service and patches card state", async () => {
@@ -231,12 +238,15 @@ describe("integration refresh endpoint", () => {
         },
       ],
     });
+    await service.apply([
+      { type: "add-card-mapper", name: "events", spec: calendarMapperSpec },
+    ]);
     await service.addQuery({ ...calendarQuery, cardId: "calendar-card" });
     await service.addQuery({
       cardId: "unsupported-card",
       integration: "unknown",
       query: {},
-      formatter: { shape: "object" as const, fields: {} },
+      cardMapper: "identity",
     });
 
     const response = await handleIntegrationRefreshRequest(
@@ -269,6 +279,53 @@ describe("integration refresh endpoint", () => {
     });
   });
 
+  test("two queries naming one card mapper are shaped through the same stored spec", async () => {
+    const source = {
+      items: [
+        {
+          id: "event-1",
+          summary: "Planning",
+          start: { dateTime: "2026-08-27T09:00:00-04:00" },
+        },
+      ],
+    };
+    const pull = vi.fn(async () => Response.json(source));
+    const service = createTestService({
+      ...defaultDashboardConfiguration,
+      integrations: [
+        { id: "team-calendar", type: "google-calendar", settings: {} },
+      ],
+      cards: [
+        ...defaultDashboardConfiguration.cards,
+        { id: "card-a", title: "A", template: "calendar", state: { events: [] } },
+        { id: "card-b", title: "B", template: "calendar", state: { events: [] } },
+      ],
+    });
+    await service.apply([
+      { type: "add-card-mapper", name: "events", spec: calendarMapperSpec },
+    ]);
+    await service.addQuery({ ...calendarQuery, cardId: "card-a" });
+    await service.addQuery({ ...calendarQuery, cardId: "card-b" });
+
+    const response = await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+      }),
+      { service, tokenProvider: async () => "access-token", fetch: pull },
+    );
+
+    expect(response.status).toBe(200);
+    const cards = await service.read("cards");
+    const cardA = cards.find(({ id }) => id === "card-a");
+    const cardB = cards.find(({ id }) => id === "card-b");
+    // Both cards were shaped by the one stored mapper, not by separate
+    // copies — the resolved output is identical.
+    expect(cardA?.state).toEqual(cardB?.state);
+    expect(cardA?.state).toMatchObject({
+      events: [{ id: "event-1", title: "Planning" }],
+    });
+  });
+
   test("reports one card query's failure without stopping the rest", async () => {
     const service = createTestService({
       ...defaultDashboardConfiguration,
@@ -285,6 +342,9 @@ describe("integration refresh endpoint", () => {
         },
       ],
     });
+    await service.apply([
+      { type: "add-card-mapper", name: "events", spec: calendarMapperSpec },
+    ]);
     await service.addQuery({ ...calendarQuery, cardId: "calendar-card" });
 
     const response = await handleIntegrationRefreshRequest(

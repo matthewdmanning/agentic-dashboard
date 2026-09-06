@@ -1,15 +1,15 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import * as z from "zod/v4";
 
-import { encodeUserPathSegment } from "../auth";
 import { querySchema } from "../contract";
+import { sealedSecretSchema, type SecretBox } from "../server/secret-box";
 
 /**
- * A query as it lives on disk: `querySchema`'s fields (integration, query,
- * formatter) plus the addressing a standalone per-user store needs now that a
- * card carries no queries of its own (D32) — an id to address it by, and the
- * card its result feeds.
+ * A query as the rest of the service sees it: `querySchema`'s fields
+ * (integration, query, the card mapper name it references) plus the
+ * addressing a query needs now that a card carries no queries of its own
+ * (D32) — an id to address it by, and the card its result feeds.
  */
 export const newQuerySchema = querySchema
   .safeExtend({ cardId: z.string().min(1) })
@@ -26,11 +26,45 @@ export interface UserQueryStore {
   list(user: string): Promise<StoredQuery[]>;
   /** Assumes `query.id` is fresh — the caller (service) generates it. */
   add(user: string, query: StoredQuery): Promise<void>;
-  /** Resolves `false` when `query.id` is not found under `user`, without distinguishing "no such query" from "not yours" (D31). */
+  /** Resolves `false` when `query.id` is not found under `user` — without distinguishing "no such query" from "not yours" (D31). */
   edit(user: string, query: StoredQuery): Promise<boolean>;
-  /** Resolves `false` when `id` is not found under `user`. */
+  /** Resolves `false` when `id` is not found under `user`. Never decrypts (D41) — an administrator deleting another user's query never sees its contents. */
   remove(user: string, id: string): Promise<boolean>;
+  /**
+   * Whether any user's query names this card mapper — read from the
+   * cleartext envelope only, no decryption (D38, D41). The one way to
+   * reference-count a mapper across queries that are private per user
+   * without crossing that privacy boundary.
+   */
+  isReferencedByAnyQuery(mapperName: string): Promise<boolean>;
 }
+
+/**
+ * A query as it lives on disk (D41): a cleartext envelope — id, owner, the
+ * card mapper name, and the card it feeds, none of which D31 calls private —
+ * plus `sealed`, the encrypted `{ integration, query }` pair, which is what
+ * D31 does protect. One store for every user; privacy comes from the seal,
+ * not from which file a row sits in.
+ */
+const storedRecordSchema = z
+  .object({
+    id: z.string().min(1),
+    owner: z.string().min(1),
+    cardId: z.string().min(1),
+    cardMapper: z.string().min(1),
+    sealed: sealedSecretSchema,
+  })
+  .strict();
+
+type StoredRecord = z.infer<typeof storedRecordSchema>;
+
+/** The part of a query D31 protects: which integration, and what it asks for. */
+const privatePayloadSchema = z
+  .object({
+    integration: z.string().min(1),
+    query: z.unknown(),
+  })
+  .strict();
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   const temporaryPath = `${path}.tmp`;
@@ -44,51 +78,94 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   }
 }
 
-async function readEntries(path: string): Promise<StoredQuery[]> {
+async function readRecords(path: string): Promise<StoredRecord[]> {
   try {
     const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
     if (!Array.isArray(parsed)) {
-      throw new Error("User query store must be an array");
+      throw new Error("Query store must be an array");
     }
-    return parsed.map((entry) => storedQuerySchema.parse(entry));
+    return parsed.map((entry) => storedRecordSchema.parse(entry));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return [];
   }
 }
 
-/**
- * File-backed, one file per user (D32's storage boundary): nothing else holds
- * another user's queries, so there is nothing to filter on read (D31). Same
- * temp-then-rename atomic write as `server/integrations/catalog.ts`.
- */
-export function createFileUserQueryStore(root: string): UserQueryStore {
-  const pathFor = (user: string) =>
-    join(root, encodeUserPathSegment(user), "queries.json");
-
+/** Seals `query`'s private half under `owner`, keeping the rest as the cleartext envelope. */
+function toRecord(owner: string, query: StoredQuery, secretBox: SecretBox): StoredRecord {
   return {
-    list: (user) => readEntries(pathFor(user)),
+    id: query.id,
+    owner,
+    cardId: query.cardId,
+    cardMapper: query.cardMapper,
+    sealed: secretBox.seal(
+      owner,
+      JSON.stringify({ integration: query.integration, query: query.query }),
+    ),
+  };
+}
+
+/** Opens `record`'s seal under its own recorded owner — never a caller-supplied identity. */
+function toStoredQuery(record: StoredRecord, secretBox: SecretBox): StoredQuery {
+  const { integration, query } = privatePayloadSchema.parse(
+    JSON.parse(secretBox.open(record.owner, record.sealed)),
+  );
+  return storedQuerySchema.parse({
+    id: record.id,
+    cardId: record.cardId,
+    cardMapper: record.cardMapper,
+    integration,
+    query,
+  });
+}
+
+/**
+ * One encrypted, file-backed store for every user's queries (D41, superseding
+ * #85's per-user files). `secretBox` binds each seal to its owner, so D31's
+ * privacy is an encryption and access-check property now rather than a
+ * storage-boundary one — see D41 for the tradeoff. Same temp-then-rename
+ * atomic write as `server/integrations/catalog.ts`.
+ */
+export function createEncryptedQueryStore(
+  path: string,
+  secretBox: SecretBox,
+): UserQueryStore {
+  return {
+    list: async (user) => {
+      const records = await readRecords(path);
+      return records
+        .filter((record) => record.owner === user)
+        .map((record) => toStoredQuery(record, secretBox));
+    },
     add: async (user, query) => {
-      const path = pathFor(user);
-      const entries = await readEntries(path);
-      await writeJson(path, [...entries, query]);
+      const records = await readRecords(path);
+      records.push(toRecord(user, query, secretBox));
+      await writeJson(path, records);
     },
     edit: async (user, query) => {
-      const path = pathFor(user);
-      const entries = await readEntries(path);
-      const index = entries.findIndex(({ id }) => id === query.id);
+      const records = await readRecords(path);
+      const index = records.findIndex(
+        (record) => record.owner === user && record.id === query.id,
+      );
       if (index === -1) return false;
-      entries[index] = query;
-      await writeJson(path, entries);
+      records[index] = toRecord(user, query, secretBox);
+      await writeJson(path, records);
       return true;
     },
     remove: async (user, id) => {
-      const path = pathFor(user);
-      const entries = await readEntries(path);
-      const remaining = entries.filter((entry) => entry.id !== id);
-      if (remaining.length === entries.length) return false;
+      const records = await readRecords(path);
+      const remaining = records.filter(
+        (record) => !(record.owner === user && record.id === id),
+      );
+      if (remaining.length === records.length) return false;
       await writeJson(path, remaining);
       return true;
+    },
+    isReferencedByAnyQuery: async (mapperName) => {
+      const records = await readRecords(path);
+      // Envelope-only: `cardMapper` is cleartext by design (D41), so this
+      // never calls `secretBox.open`.
+      return records.some((record) => record.cardMapper === mapperName);
     },
   };
 }

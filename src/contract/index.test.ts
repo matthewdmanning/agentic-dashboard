@@ -3,11 +3,11 @@ import { describe, expect, test } from "vitest";
 import {
   compositionNodeSchema,
   integrationSchema,
-  compileFormatterSpec,
+  compileCardMapper,
   mutationSchema,
   parseDashboardConfiguration,
+  type CardMapperSpec,
   type DashboardConfiguration,
-  type FormatterSpec,
 } from "./index";
 import {
   useTestCardTemplates,
@@ -39,6 +39,7 @@ const configuration: DashboardConfiguration = {
       state: { events: [] },
     },
   ],
+  cardMappers: [],
 };
 
 describe("dashboard contract", () => {
@@ -146,6 +147,21 @@ describe("assemble-card-template mutation", () => {
   });
 });
 
+describe("card mapper mutations", () => {
+  test("parse a name and a declarative spec", () => {
+    const spec: CardMapperSpec = { shape: "object", fields: {} };
+    expect(
+      mutationSchema.parse({ type: "add-card-mapper", name: "events", spec }),
+    ).toMatchObject({ type: "add-card-mapper", name: "events" });
+    expect(
+      mutationSchema.parse({ type: "edit-card-mapper", name: "events", spec }),
+    ).toMatchObject({ type: "edit-card-mapper", name: "events" });
+    expect(
+      mutationSchema.parse({ type: "remove-card-mapper", name: "events" }),
+    ).toMatchObject({ type: "remove-card-mapper", name: "events" });
+  });
+});
+
 describe("integration settings", () => {
   test("refuse a credential-shaped key, whatever it is called", () => {
     for (const key of ["apiKey", "access_token", "clientSecret", "password"]) {
@@ -176,9 +192,9 @@ describe("integration settings", () => {
   });
 });
 
-describe("compileFormatterSpec", () => {
+describe("compileCardMapper", () => {
   test("maps object fields with fallback, default, and coercion", () => {
-    const spec: FormatterSpec = {
+    const spec: CardMapperSpec = {
       shape: "object",
       fields: {
         title: { from: ["summary", "title"], default: "Untitled" },
@@ -187,12 +203,12 @@ describe("compileFormatterSpec", () => {
     };
 
     expect(
-      compileFormatterSpec(spec)({ summary: "Standup", temp: 72 }),
+      compileCardMapper(spec)({ summary: "Standup", temp: 72 }),
     ).toEqual({ title: "Standup", temperature: "72" });
   });
 
   test("maps arrays and substitutes the item index in defaults", () => {
-    const spec: FormatterSpec = {
+    const spec: CardMapperSpec = {
       shape: "array",
       from: ["items"],
       into: "events",
@@ -201,7 +217,7 @@ describe("compileFormatterSpec", () => {
       },
     };
 
-    expect(compileFormatterSpec(spec)({ items: [{}, { id: "x" }] })).toEqual({
+    expect(compileCardMapper(spec)({ items: [{}, { id: "x" }] })).toEqual({
       events: [{ id: "event-0" }, { id: "x" }],
     });
   });

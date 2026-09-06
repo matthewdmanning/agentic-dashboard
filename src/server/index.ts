@@ -13,9 +13,14 @@ import {
   type DashboardService,
   type ServiceFailureCode,
 } from "../service";
-import { createFileUserQueryStore } from "../service/queries";
+import { createEncryptedQueryStore } from "../service/queries";
 import { createFileCredentialStore } from "./integrations/credentials";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
+import {
+  createSecretBox,
+  defaultSecretKeyPath,
+  resolveSecretKey,
+} from "./secret-box";
 import { handleRegistryRequest } from "./registry";
 import {
   defaultCardTemplateClientBuildPath,
@@ -36,6 +41,7 @@ const readScopes = [
   "integrations",
   "roles",
   "queries",
+  "cardMappers",
 ] as const;
 
 export async function handleDashboardConfigurationRequest(
@@ -125,6 +131,8 @@ async function readDashboardScope(
       return service.read("roles", credential);
     case "queries":
       return service.read("queries", credential);
+    case "cardMappers":
+      return service.read("cardMappers", credential);
   }
 }
 
@@ -153,12 +161,16 @@ export async function handleIntegrationRefreshRequest(
     return new Response("Method not allowed", { status: 405 });
   }
   const credential = credentialFromRequest(request);
-  const [queries, integrations] = await Promise.all([
+  const [queries, integrations, cardMappers] = await Promise.all([
     dependencies.service.read("queries", credential),
     dependencies.service.read("integrations", credential),
+    dependencies.service.read("cardMappers", credential),
   ]);
   return Response.json(
-    await refreshCardQueries(queries, integrations, { ...dependencies, credential }),
+    await refreshCardQueries(queries, integrations, cardMappers, {
+      ...dependencies,
+      credential,
+    }),
   );
 }
 
@@ -235,10 +247,13 @@ async function startServer() {
   const catalogPath =
     process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
     join(workspace, ".dashboard", "integrations.json");
-  // Per-user files live under `.dashboard/users/<user>/` (Phase 2 conventions).
-  const userQueriesRoot =
-    process.env.DASHBOARD_USER_DATA_PATH ??
-    join(workspace, ".dashboard", "users");
+  // One encrypted store for every user's queries (D41) — no per-user directory.
+  const queriesPath =
+    process.env.DASHBOARD_QUERIES_PATH ?? join(workspace, ".dashboard", "queries.json");
+  // Outside the data directory by construction (D41): the OS home directory,
+  // not the workspace `dashboardPath` et al. sit under.
+  const secretKeyPath =
+    process.env.DASHBOARD_SECRET_KEY_PATH ?? defaultSecretKeyPath();
   const localUserTokenPath =
     process.env.DASHBOARD_LOCAL_USER_TOKEN_PATH ??
     join(workspace, ".dashboard", "local-user-token");
@@ -253,7 +268,10 @@ async function startServer() {
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
   const credentials = createFileCredentialStore(credentialsPath);
   const catalog = createFileIntegrationCatalog(catalogPath);
-  const queries = createFileUserQueryStore(userQueriesRoot);
+  const queries = createEncryptedQueryStore(
+    queriesPath,
+    createSecretBox(await resolveSecretKey(secretKeyPath)),
+  );
   const service = createService({
     persistence: createFilePersistence(dashboardPath),
     authStore: createFileAuthStore(authStorePath),
