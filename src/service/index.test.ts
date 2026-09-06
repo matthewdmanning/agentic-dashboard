@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { userInfo } from "node:os";
 import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -10,7 +11,11 @@ import {
   type Role,
 } from "../contract";
 import type { CredentialStore } from "../server/integrations/credentials";
-import { createService, type DashboardPersistence } from "./index";
+import {
+  createService,
+  resolveCaller,
+  type DashboardPersistence,
+} from "./index";
 import {
   useTestCardTemplates,
   withTestCard,
@@ -223,7 +228,7 @@ describe("dashboard service", () => {
       authStore: {
         resolve: async (credential) => {
           expect(credential).toBe("credential");
-          return { credential, role: "reader" };
+          return { user: "test-user", role: "reader" };
         },
       },
     });
@@ -231,6 +236,41 @@ describe("dashboard service", () => {
     await expect(service.read("cards", "credential")).resolves.toEqual(
       testConfiguration.cards,
     );
+  });
+
+  test("keeps the authenticated account user with its resolved role", async () => {
+    await expect(
+      resolveCaller(
+        {
+          authStore: {
+            resolve: async () => ({ user: "alice", role: "reader" }),
+          },
+          roles: [
+            {
+              name: "reader",
+              permissions: {
+                data: "noAccess",
+                cards: "read",
+                presentation: "noAccess",
+                integrations: "noAccess",
+                roles: "noAccess",
+              },
+            },
+          ],
+          persistence: createMemoryPersistence(),
+        },
+        "credential",
+      ),
+    ).resolves.toMatchObject({ user: "alice", role: { name: "reader" } });
+  });
+
+  test("resolves the local caller to the running OS account", async () => {
+    await expect(
+      resolveCaller(
+        { localUserToken: "secret", persistence: createMemoryPersistence() },
+        "secret",
+      ),
+    ).resolves.toMatchObject({ user: userInfo().username });
   });
 
   test("read('all') returns only the categories the role may read", async () => {

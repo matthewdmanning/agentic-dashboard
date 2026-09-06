@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { userInfo } from "node:os";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { randomUUID } from "node:crypto";
@@ -107,6 +108,13 @@ interface Dependencies {
    * an unproven caller is treated as local.
    */
   localUserToken?: string;
+  /** Test seam for the local OS identity; production uses the running account. */
+  localUserName?: string;
+}
+
+export interface AuthenticatedCaller {
+  user: string | undefined;
+  role: Role;
 }
 
 export interface DashboardService {
@@ -207,23 +215,24 @@ async function readConfiguration(
   return parseDashboardConfiguration(await persistence.read());
 }
 
-async function resolveRole(
+export async function resolveCaller(
   dependencies: Dependencies,
   credential: string | undefined,
-): Promise<Role> {
+): Promise<AuthenticatedCaller> {
   const asLocalUser = dependencies.localUser ?? localUser;
+  const asLocalUserName = dependencies.localUserName ?? userInfo().username;
 
   // The local user proves itself with the token only that OS account can read.
   if (isLocalUserToken(credential, dependencies.localUserToken)) {
-    return asLocalUser;
+    return { user: asLocalUserName, role: asLocalUser };
   }
 
   if (credential === undefined) {
     // With a token provisioned, proving nothing gets nothing. Without one
     // there is no door to prove anything at, so the caller is the local user.
     return dependencies.localUserToken === undefined
-      ? asLocalUser
-      : unauthenticatedUser;
+      ? { user: asLocalUserName, role: asLocalUser }
+      : { user: undefined, role: unauthenticatedUser };
   }
 
   if (!dependencies.authStore) {
@@ -243,7 +252,7 @@ async function resolveRole(
   if (!role) {
     throw new ServiceFailure("unknown-role", `Unknown role: ${account.role}`);
   }
-  return role;
+  return { user: account.user, role };
 }
 
 async function readState<Scope extends ReadScope>(
@@ -252,7 +261,8 @@ async function readState<Scope extends ReadScope>(
   credential: string | undefined,
 ): Promise<ReadScopes[Scope]> {
   const configuration = await readConfiguration(dependencies.persistence);
-  const role = await resolveRole(dependencies, credential);
+  const caller = await resolveCaller(dependencies, credential);
+  const role = caller.role;
 
   if (scope !== "all" && scope !== "role") requireRead(role, scope);
 
@@ -322,7 +332,8 @@ async function applyMutations(
 ): Promise<ReadScopes["all"]> {
   const mutations = mutationsSchema.parse(input);
   const configuration = await readConfiguration(dependencies.persistence);
-  const role = await resolveRole(dependencies, credential);
+  const caller = await resolveCaller(dependencies, credential);
+  const role = caller.role;
 
   for (const mutation of mutations) {
     const { category, level } = mutationRequirements[mutation.type];
@@ -403,7 +414,8 @@ async function authorizeConnection(
   credential: string | undefined,
 ): Promise<void> {
   const configuration = await readConfiguration(dependencies.persistence);
-  const role = await resolveRole(dependencies, credential);
+  const caller = await resolveCaller(dependencies, credential);
+  const role = caller.role;
   requireLevel(role, "integrations", "edit");
 
   if (!configuration.integrations.some(({ id }) => id === connectionId)) {
@@ -427,7 +439,8 @@ async function readConnectableTypes(
   credential: string | undefined,
 ): Promise<string[]> {
   const configuration = await readConfiguration(dependencies.persistence);
-  const role = await resolveRole(dependencies, credential);
+  const caller = await resolveCaller(dependencies, credential);
+  const role = caller.role;
   requireRead(role, "integrations");
   return [...(dependencies.connectableTypes ?? [])];
 }
