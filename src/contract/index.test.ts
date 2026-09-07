@@ -6,6 +6,7 @@ import {
   compileCardMapper,
   mutationSchema,
   parseDashboardConfiguration,
+  userAppearanceSchema,
   type CardMapperSpec,
   type DashboardConfiguration,
 } from "./index";
@@ -24,7 +25,6 @@ const configuration: DashboardConfiguration = {
   ],
   themes: [{ id: "calm", settings: { density: "comfortable" } }],
   dashboard: { id: "home", cards: ["first", "second"], theme: "calm" },
-  fontScale: 1.1,
   cards: [
     {
       id: "first",
@@ -58,6 +58,12 @@ describe("dashboard contract", () => {
         wiring: [],
         arrangement: [],
       }),
+    ).toThrow();
+  });
+
+  test("rejects fontScale (#95) — typeset size, a per-user field, replaces it", () => {
+    expect(() =>
+      parseDashboardConfiguration({ ...configuration, fontScale: 1.1 }),
     ).toThrow();
   });
 
@@ -195,6 +201,76 @@ describe("integration settings", () => {
         type: "example-service",
         settings: { metadata: { accessToken: "not-allowed" } },
       }),
+    ).toThrow();
+  });
+});
+
+describe("user appearance (#94, #95)", () => {
+  const validAppearance = {
+    baseColour: "slate",
+    typeset: {
+      size: 1,
+      leading: "normal",
+      flow: "wrap",
+      bodyFont: "sans",
+      headingFont: "sans",
+      monospaceFont: "mono",
+    },
+    menuColour: "default",
+    menuAccent: "subtle",
+  };
+
+  test("parses a complete, closed-vocabulary appearance", () => {
+    expect(userAppearanceSchema.parse(validAppearance)).toEqual(
+      validAppearance,
+    );
+  });
+
+  test("rejects a base colour outside shadcn's vocabulary", () => {
+    expect(() =>
+      userAppearanceSchema.parse({ ...validAppearance, baseColour: "purple" }),
+    ).toThrow();
+  });
+
+  test("rejects an unsupported menu colour", () => {
+    expect(() =>
+      userAppearanceSchema.parse({
+        ...validAppearance,
+        menuColour: "rainbow",
+      }),
+    ).toThrow();
+  });
+
+  test("rejects an unsupported menu accent", () => {
+    expect(() =>
+      userAppearanceSchema.parse({ ...validAppearance, menuAccent: "loud" }),
+    ).toThrow();
+  });
+
+  test("rejects an unsupported typeset leading, flow, or font family", () => {
+    expect(() =>
+      userAppearanceSchema.parse({
+        ...validAppearance,
+        typeset: { ...validAppearance.typeset, leading: "condensed" },
+      }),
+    ).toThrow();
+    expect(() =>
+      userAppearanceSchema.parse({
+        ...validAppearance,
+        typeset: { ...validAppearance.typeset, flow: "nowrap" },
+      }),
+    ).toThrow();
+    expect(() =>
+      userAppearanceSchema.parse({
+        ...validAppearance,
+        typeset: { ...validAppearance.typeset, bodyFont: "comic-sans" },
+      }),
+    ).toThrow();
+  });
+
+  test("rejects a project-owned field smuggled onto a user's appearance", () => {
+    expect(() =>
+      userAppearanceSchema.parse({ ...validAppearance, iconLibrary: "lucide" }),
     ).toThrow();
   });
 });

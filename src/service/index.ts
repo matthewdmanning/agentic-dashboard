@@ -52,6 +52,7 @@ import {
   type DashboardConfiguration,
   type Integration,
   type Mutation,
+  type PartialUserAppearance,
   type PermissionCategory,
   type PermissionLevel,
   type Role,
@@ -103,7 +104,6 @@ export interface ReadScopes {
   presentation: {
     dashboard: Dashboard;
     themes: Theme[];
-    fontScale: number;
   };
   integrations: Integration[];
   roles: Role[];
@@ -262,13 +262,15 @@ export interface DashboardService {
    */
   readAppearance(credential?: string): Promise<AppearanceView>;
   /**
-   * Replaces the caller's own appearance preference as a whole and
-   * regenerates their effective `components.json` from the project template
-   * (D33, D34) — never a patch, so no project-owned or stale field can
-   * survive. Ungated for the same reason `readAppearance` is.
+   * Merges an update onto the caller's stored appearance (or the shared
+   * default) and regenerates their effective `components.json` from the
+   * project template (D33, D34, #95) — a caller states only the fields it is
+   * changing, but the file this writes is always replaced as a whole, never
+   * patched, so no project-owned or stale field can survive. Ungated for the
+   * same reason `readAppearance` is.
    */
   setAppearance(
-    appearance: UserAppearance,
+    update: PartialUserAppearance,
     credential?: string,
   ): Promise<AppearanceView>;
 }
@@ -452,7 +454,6 @@ async function readState<Scope extends ReadScope>(
     presentation: () => ({
       dashboard: configuration.dashboard,
       themes: configuration.themes,
-      fontScale: configuration.fontScale,
     }),
     integrations: () => integrations,
     roles: () => [...(dependencies.roles ?? roles)],
@@ -502,7 +503,6 @@ function projectReadable(
   if (role.permissions.presentation !== "noAccess") {
     readable.dashboard = configuration.dashboard;
     readable.themes = configuration.themes;
-    readable.fontScale = configuration.fontScale;
   }
   if (role.permissions.integrations !== "noAccess") {
     readable.integrations = integrations;
@@ -887,21 +887,23 @@ async function readCallerAppearance(
       ? ((await dependencies.appearance.get(caller.user)) ??
         defaultUserAppearance)
       : defaultUserAppearance;
-  return { ...appearance, css: appearanceCss(appearance.baseColour) };
+  return { ...appearance, css: appearanceCss(appearance) };
 }
 
 /**
- * Replaces the caller's own appearance preference as a whole and, when this
- * build regenerates per-user `components.json` files, rewrites theirs from
- * the project template (D34, #94). Ungated like `connectIntegration` (D35):
- * the caller resolved here is always who the preference belongs to.
+ * Merges an update onto the caller's stored appearance (or the shared
+ * default) and, when this build regenerates per-user `components.json`
+ * files, rewrites theirs from the project template (D34, #94, #95) — the
+ * caller states only the fields it is changing, but the merged result is
+ * always validated and persisted as a whole, never a partial record.
+ * Ungated like `connectIntegration` (D35): the caller resolved here is
+ * always who the preference belongs to.
  */
 async function setCallerAppearance(
   dependencies: Dependencies,
-  update: UserAppearance,
+  update: PartialUserAppearance,
   credential: string | undefined,
 ): Promise<AppearanceView> {
-  const appearance = userAppearanceSchema.parse(update);
   const user = await requireOwner(
     dependencies,
     credential,
@@ -913,6 +915,9 @@ async function setCallerAppearance(
       "Appearance storage is not configured",
     );
   }
+  const existing =
+    (await dependencies.appearance.get(user)) ?? defaultUserAppearance;
+  const appearance = userAppearanceSchema.parse({ ...existing, ...update });
   await dependencies.appearance.set(user, appearance);
   if (dependencies.appearanceComponents) {
     await writeUserComponentsConfig(
@@ -922,7 +927,7 @@ async function setCallerAppearance(
       appearance,
     );
   }
-  return { ...appearance, css: appearanceCss(appearance.baseColour) };
+  return { ...appearance, css: appearanceCss(appearance) };
 }
 
 function requireQueryStore(dependencies: Dependencies): UserQueryStore {
@@ -1134,9 +1139,6 @@ function applyMutation(
       );
       return;
     }
-    case "set-font-scale":
-      configuration.fontScale = mutation.fontScale;
-      return;
     case "set-integration-retention-policy":
       configuration.integrationRetentionDays = mutation.retentionDays;
       return;

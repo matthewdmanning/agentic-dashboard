@@ -125,7 +125,6 @@ describe("dashboard MCP server", () => {
         "add-theme",
         "edit-theme",
         "remove-theme",
-        "set-font-scale",
         "add-integration",
         "edit-integration",
         "remove-integration",
@@ -136,6 +135,8 @@ describe("dashboard MCP server", () => {
         "disconnect-integration",
         "read-appearance",
         "set-base-colour",
+        "set-typeset",
+        "set-menu-appearance",
       ]),
     );
   });
@@ -158,8 +159,8 @@ describe("dashboard MCP server", () => {
     const client = await connectClient(createTestService());
 
     const applied = await client.callTool({
-      name: "set-font-scale",
-      arguments: { fontScale: 1.25 },
+      name: "edit-theme",
+      arguments: { theme: { id: "calm", settings: { density: "compact" } } },
     });
     expect(applied.isError).toBeFalsy();
 
@@ -167,7 +168,9 @@ describe("dashboard MCP server", () => {
       name: "read-dashboard",
       arguments: { scope: "presentation" },
     });
-    expect(JSON.parse(text(read))).toMatchObject({ fontScale: 1.25 });
+    expect(JSON.parse(text(read))).toMatchObject({
+      themes: [{ id: "calm", settings: { density: "compact" } }],
+    });
   });
 
   test("a denied read surfaces as an MCP error carrying the service's failure code", async () => {
@@ -215,8 +218,8 @@ describe("dashboard MCP server", () => {
     );
 
     const result = await client.callTool({
-      name: "set-font-scale",
-      arguments: { fontScale: 1.5 },
+      name: "edit-theme",
+      arguments: { theme: { id: "calm", settings: {} } },
     });
 
     expect(result.isError).toBe(true);

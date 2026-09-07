@@ -115,13 +115,13 @@ describe("dashboard service", () => {
         patch: { message: "Updated" },
       },
       {
-        type: "set-font-scale",
-        fontScale: 1.25,
+        type: "edit-theme",
+        theme: { id: "calm", settings: { density: "compact" } },
       },
     ];
 
     await expect(service.apply(mutations)).resolves.toMatchObject({
-      fontScale: 1.25,
+      themes: [{ id: "calm", settings: { density: "compact" } }],
       cards: [{ state: { message: "Updated" } }],
     });
     expect(persistence.writes).toHaveLength(1);
@@ -141,7 +141,7 @@ describe("dashboard service", () => {
     });
 
     const result = await service.apply([
-      { type: "set-font-scale", fontScale: 1.5 },
+      { type: "edit-theme", theme: { id: "calm", settings: {} } },
     ]);
 
     expect(result).not.toHaveProperty("roles");
@@ -202,8 +202,8 @@ describe("dashboard service", () => {
           patch: { message: "Updated" },
         },
         {
-          type: "set-font-scale",
-          fontScale: 1.25,
+          type: "edit-theme",
+          theme: { id: "calm", settings: {} },
         },
       ]),
     ).rejects.toThrow("presentation: edit");
@@ -315,7 +315,6 @@ describe("dashboard service", () => {
       cardMappers: testConfiguration.cardMappers,
       dashboard: testConfiguration.dashboard,
       themes: testConfiguration.themes,
-      fontScale: testConfiguration.fontScale,
       integrations: testConfiguration.integrations,
       integrationRetentionDays: testConfiguration.integrationRetentionDays,
       roles,
@@ -361,7 +360,9 @@ describe("dashboard service", () => {
     const service = createService({ persistence });
 
     await expect(service.read("roles")).resolves.toEqual(roles);
-    await service.apply([{ type: "set-font-scale", fontScale: 1.5 }]);
+    await service.apply([
+      { type: "edit-theme", theme: { id: "calm", settings: {} } },
+    ]);
     expect(persistence.writes[0]).not.toHaveProperty("roles");
   });
 
@@ -1841,7 +1842,7 @@ describe("card mapper store", () => {
   });
 });
 
-describe("user appearance (#94)", () => {
+describe("user appearance (#94, #95)", () => {
   function twoUserAuthStore() {
     return {
       resolve: async (credential: string) =>
@@ -1962,8 +1963,12 @@ describe("user appearance (#94)", () => {
         iconLibrary: "lucide",
         rtl: false,
         aliases: { components: "@/components", utils: "@/lib/utils" },
-        menuColor: "default",
-        menuAccent: "subtle",
+        // Stale template values — the generated file must reflect the
+        // caller's own appearance (its default, here) instead, proving these
+        // two fields are stripped from the template rather than carried
+        // through (D33).
+        menuColor: "inverted-translucent",
+        menuAccent: "bold",
       }),
     );
     const appearance = createFileAppearanceStore(
@@ -1983,12 +1988,85 @@ describe("user appearance (#94)", () => {
         "utf8",
       ),
     ) as Record<string, unknown>;
-    expect(generated).not.toHaveProperty("menuColor");
-    expect(generated).not.toHaveProperty("menuAccent");
+    expect(generated.menuColor).toBe("default");
+    expect(generated.menuAccent).toBe("subtle");
     expect(generated.style).toBe("new-york");
     expect(generated.iconLibrary).toBe("lucide");
     expect((generated.tailwind as { baseColor: string }).baseColor).toBe(
       "zinc",
+    );
+  });
+
+  test("merges a partial update without resetting fields it does not name (#95)", async () => {
+    const appearance = createFileAppearanceStore(
+      join(await mkdtemp(join(tmpdir(), "appearance-")), "appearance.json"),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance,
+    });
+
+    await service.setAppearance({ baseColour: "slate" });
+    const result = await service.setAppearance({
+      typeset: {
+        size: 1.2,
+        leading: "relaxed",
+        flow: "balance",
+        bodyFont: "serif",
+        headingFont: "mono",
+        monospaceFont: "sans",
+      },
+    });
+
+    expect(result.baseColour).toBe("slate");
+    expect(result.typeset.leading).toBe("relaxed");
+  });
+
+  test("two users hold independent typesets and menu treatments, each seeing only their own (#95)", async () => {
+    const appearance = createFileAppearanceStore(
+      join(await mkdtemp(join(tmpdir(), "appearance-")), "appearance.json"),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance,
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.setAppearance(
+      { menuColour: "inverted", menuAccent: "bold" },
+      "alice-token",
+    );
+    await service.setAppearance(
+      { menuColour: "default-translucent", menuAccent: "subtle" },
+      "bob-token",
+    );
+
+    await expect(service.readAppearance("alice-token")).resolves.toMatchObject({
+      menuColour: "inverted",
+      menuAccent: "bold",
+    });
+    await expect(service.readAppearance("bob-token")).resolves.toMatchObject({
+      menuColour: "default-translucent",
+      menuAccent: "subtle",
+    });
+  });
+
+  test("rejects an unsupported menu colour at the contract boundary (#95)", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await expect(
+      service.setAppearance({ menuColour: "rainbow" } as never),
+    ).rejects.toThrow();
+  });
+
+  test("fontScale no longer exists as a field, operation, or read (#95)", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await expect(
+      service.apply([{ type: "set-font-scale", fontScale: 1.2 } as never]),
+    ).rejects.toThrow();
+    await expect(service.read("presentation")).resolves.not.toHaveProperty(
+      "fontScale",
     );
   });
 });

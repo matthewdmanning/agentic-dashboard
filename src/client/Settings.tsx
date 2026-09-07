@@ -2,12 +2,22 @@ import { useState, type FormEvent } from "react";
 
 import {
   baseColours,
+  menuAccents,
+  menuColours,
+  typesetFlows,
+  typesetFontFamilies,
+  typesetLeadings,
   type BaseColour,
+  type MenuAccent,
+  type MenuColour,
   type Mutation,
+  type PartialUserAppearance,
   type ReadableDashboard,
   type Role,
   type Theme,
-  type UserAppearance,
+  type TypesetFlow,
+  type TypesetFontFamily,
+  type TypesetLeading,
 } from "../contract";
 import type { AppearanceView } from "./appearance-client";
 import {
@@ -40,14 +50,13 @@ export function Settings({
   onSave: (mutations: readonly Mutation[]) => Promise<void>;
   /** Hands a connection's secret to the server. Not a mutation — see `contract`'s ban on a credential-shaped settings key. */
   onConnect: (integrationId: string, credential: string) => Promise<void>;
-  /** Replaces the caller's own appearance preference as a whole (D34). Not a mutation — applies immediately, like `onConnect`. */
-  onSetAppearance: (update: UserAppearance) => Promise<void>;
+  /** Merges an update onto the caller's own stored appearance (D34, #95). Not a mutation — applies immediately, like `onConnect`. */
+  onSetAppearance: (update: PartialUserAppearance) => Promise<void>;
 }) {
   const initial: DashboardSettings = {
     dashboard: dashboard.dashboard,
     integrations: dashboard.integrations,
     themes: dashboard.themes,
-    fontScale: dashboard.fontScale,
   };
   const [settings, setSettings] = useState<DashboardSettings>(initial);
   const [connection, setConnection] = useState({
@@ -56,6 +65,15 @@ export function Settings({
     credential: "",
   });
   const [error, setError] = useState<string>();
+
+  /** Every appearance control applies immediately, like `onConnect` — never batched into `onSave`'s mutation list. */
+  function updateAppearance(update: PartialUserAppearance) {
+    void onSetAppearance(update).catch((reason: unknown) => {
+      setError(
+        reason instanceof Error ? reason.message : "Could not save appearance",
+      );
+    });
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -119,20 +137,174 @@ export function Settings({
           <select
             value={appearance.baseColour}
             onChange={(event) =>
-              void onSetAppearance({
+              updateAppearance({
                 baseColour: event.currentTarget.value as BaseColour,
-              }).catch((reason: unknown) => {
-                setError(
-                  reason instanceof Error
-                    ? reason.message
-                    : "Could not save appearance",
-                );
               })
             }
           >
             {baseColours.map((colour) => (
               <option key={colour} value={colour}>
                 {colour}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Typeset size
+          <input
+            type="range"
+            min="0.75"
+            max="2"
+            step="0.05"
+            value={appearance.typeset.size}
+            onChange={(event) =>
+              updateAppearance({
+                typeset: {
+                  ...appearance.typeset,
+                  size: event.currentTarget.valueAsNumber,
+                },
+              })
+            }
+          />
+        </label>
+
+        <label>
+          Leading
+          <select
+            value={appearance.typeset.leading}
+            onChange={(event) =>
+              updateAppearance({
+                typeset: {
+                  ...appearance.typeset,
+                  leading: event.currentTarget.value as TypesetLeading,
+                },
+              })
+            }
+          >
+            {typesetLeadings.map((leading) => (
+              <option key={leading} value={leading}>
+                {leading}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Flow
+          <select
+            value={appearance.typeset.flow}
+            onChange={(event) =>
+              updateAppearance({
+                typeset: {
+                  ...appearance.typeset,
+                  flow: event.currentTarget.value as TypesetFlow,
+                },
+              })
+            }
+          >
+            {typesetFlows.map((flow) => (
+              <option key={flow} value={flow}>
+                {flow}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Body font
+          <select
+            value={appearance.typeset.bodyFont}
+            onChange={(event) =>
+              updateAppearance({
+                typeset: {
+                  ...appearance.typeset,
+                  bodyFont: event.currentTarget.value as TypesetFontFamily,
+                },
+              })
+            }
+          >
+            {typesetFontFamilies.map((font) => (
+              <option key={font} value={font}>
+                {font}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Heading font
+          <select
+            value={appearance.typeset.headingFont}
+            onChange={(event) =>
+              updateAppearance({
+                typeset: {
+                  ...appearance.typeset,
+                  headingFont: event.currentTarget.value as TypesetFontFamily,
+                },
+              })
+            }
+          >
+            {typesetFontFamilies.map((font) => (
+              <option key={font} value={font}>
+                {font}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Monospace font
+          <select
+            value={appearance.typeset.monospaceFont}
+            onChange={(event) =>
+              updateAppearance({
+                typeset: {
+                  ...appearance.typeset,
+                  monospaceFont: event.currentTarget.value as TypesetFontFamily,
+                },
+              })
+            }
+          >
+            {typesetFontFamilies.map((font) => (
+              <option key={font} value={font}>
+                {font}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Menu colour
+          <select
+            value={appearance.menuColour}
+            onChange={(event) =>
+              updateAppearance({
+                menuColour: event.currentTarget.value as MenuColour,
+              })
+            }
+          >
+            {menuColours.map((menuColour) => (
+              <option key={menuColour} value={menuColour}>
+                {menuColour}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label>
+          Menu accent
+          <select
+            value={appearance.menuAccent}
+            onChange={(event) =>
+              updateAppearance({
+                menuAccent: event.currentTarget.value as MenuAccent,
+              })
+            }
+          >
+            {menuAccents.map((menuAccent) => (
+              <option key={menuAccent} value={menuAccent}>
+                {menuAccent}
               </option>
             ))}
           </select>
@@ -203,25 +375,6 @@ export function Settings({
             </div>
           ))}
         </fieldset>
-      ) : null}
-
-      {settings.fontScale !== undefined ? (
-        <label>
-          Font scale
-          <input
-            type="range"
-            min="0.75"
-            max="2"
-            step="0.05"
-            value={settings.fontScale}
-            onChange={(event) =>
-              setSettings({
-                ...settings,
-                fontScale: event.currentTarget.valueAsNumber,
-              })
-            }
-          />
-        </label>
       ) : null}
 
       {/*

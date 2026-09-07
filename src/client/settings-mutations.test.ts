@@ -10,7 +10,6 @@ const saved: DashboardSettings = {
   dashboard: defaultDashboardConfiguration.dashboard,
   themes: defaultDashboardConfiguration.themes,
   integrations: [{ id: "team", type: "example-service", settings: {} }],
-  fontScale: 1,
 };
 
 describe("settings mutations", () => {
@@ -21,7 +20,6 @@ describe("settings mutations", () => {
   test("edits what exists and creates what does not", () => {
     const mutations = settingsMutations(saved, {
       ...saved,
-      fontScale: 1.25,
       themes: [
         { id: "calm", settings: { density: "compact" } },
         { id: "contrast", settings: {} },
@@ -29,7 +27,6 @@ describe("settings mutations", () => {
     });
 
     expect(mutations).toEqual([
-      { type: "set-font-scale", fontScale: 1.25 },
       {
         type: "edit-theme",
         theme: { id: "calm", settings: { density: "compact" } },
@@ -74,7 +71,6 @@ describe("settings mutations", () => {
     const withoutIntegrations: DashboardSettings = {
       dashboard: saved.dashboard,
       themes: saved.themes,
-      fontScale: saved.fontScale,
     };
 
     expect(

@@ -126,7 +126,6 @@ describe("dashboard service HTTP transport", () => {
       cardMappers: defaultDashboardConfiguration.cardMappers,
       dashboard: defaultDashboardConfiguration.dashboard,
       themes: defaultDashboardConfiguration.themes,
-      fontScale: defaultDashboardConfiguration.fontScale,
       integrations: defaultDashboardConfiguration.integrations,
       integrationRetentionDays:
         defaultDashboardConfiguration.integrationRetentionDays,
@@ -141,8 +140,8 @@ describe("dashboard service HTTP transport", () => {
         method: "POST",
         body: JSON.stringify([
           {
-            type: "set-font-scale",
-            fontScale: 1.25,
+            type: "edit-theme",
+            theme: { id: "calm", settings: { density: "compact" } },
           },
         ]),
       }),
@@ -150,7 +149,9 @@ describe("dashboard service HTTP transport", () => {
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ fontScale: 1.25 });
+    await expect(response.json()).resolves.toMatchObject({
+      themes: [{ id: "calm", settings: { density: "compact" } }],
+    });
   });
 
   test("returns service permission errors without a second authorization check", async () => {

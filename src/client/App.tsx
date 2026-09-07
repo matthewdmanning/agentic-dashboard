@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
 
-import type {
-  Mutation,
-  ReadableDashboard,
-  Role,
-  UserAppearance,
+import {
+  defaultUserAppearance,
+  type Mutation,
+  type PartialUserAppearance,
+  type ReadableDashboard,
+  type Role,
 } from "../contract";
 import {
   loadAppearance,
@@ -35,18 +36,18 @@ import {
 import { RequestFailure } from "./request";
 import { Settings } from "./Settings";
 
-function renderDashboard({ dashboard, cards, fontScale }: ReadableDashboard) {
+function renderDashboard({ dashboard, cards }: ReadableDashboard) {
   if (!dashboard || !cards) {
     return <p>You do not have permission to view this dashboard.</p>;
   }
 
   const byId = new Map(cards.map((card) => [card.id, card]));
 
+  // Typeset (size, leading, flow, fonts) comes from the viewing user's own
+  // appearance — applied globally by the injected `<style id="appearance-tokens">`
+  // block's `main` rule (D33-D35, #95), never an inline style here.
   return (
-    <main
-      data-theme={dashboard.theme}
-      style={{ fontSize: `${fontScale ?? 1}rem` }}
-    >
+    <main data-theme={dashboard.theme}>
       {dashboard.cards.map((cardId) => {
         const card = byId.get(cardId);
         if (!card) return null;
@@ -75,7 +76,7 @@ export function App() {
     string[]
   >([]);
   const [appearance, setAppearanceState] = useState<AppearanceView>({
-    baseColour: "neutral",
+    ...defaultUserAppearance,
     css: "",
   });
   const [pendingCount, setPendingCount] = useState(
@@ -155,7 +156,7 @@ export function App() {
     }
   }
 
-  async function saveAppearance(update: UserAppearance): Promise<void> {
+  async function saveAppearance(update: PartialUserAppearance): Promise<void> {
     setAppearanceState(await setAppearance(update));
   }
 

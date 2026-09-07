@@ -5,6 +5,8 @@ import * as z from "zod/v4";
 import {
   userAppearanceSchema,
   type BaseColour,
+  type Typeset,
+  type TypesetFontFamily,
   type UserAppearance,
 } from "../contract";
 
@@ -71,9 +73,9 @@ export function createFileAppearanceStore(path: string): AppearanceStore {
 
 /**
  * Every field shadcn's `components.json` defines that stays project-owned
- * (D33): everything except the user-owned runtime fields (`tailwind.baseColor`
- * here; `menuColor`/`menuAccent` join it in #95) that a viewing user's own
- * appearance always supplies instead.
+ * (D33): everything except the user-owned runtime fields (`tailwind.baseColor`,
+ * `menuColor`, `menuAccent`) that a viewing user's own appearance always
+ * supplies instead.
  */
 export const componentsTemplateSchema = z
   .object({
@@ -127,6 +129,8 @@ export function generateUserComponentsConfig(
   return {
     ...template,
     tailwind: { ...template.tailwind, baseColor: appearance.baseColour },
+    menuColor: appearance.menuColour,
+    menuAccent: appearance.menuAccent,
   };
 }
 
@@ -229,15 +233,60 @@ const baseColourTokenValues: Record<BaseColour, Record<string, string>> = {
   },
 };
 
+/** Tailwind's `leading-*` scale, as real numeric line-height values (#95). */
+const typesetLeadingValues: Record<Typeset["leading"], string> = {
+  tight: "1.25",
+  normal: "1.5",
+  relaxed: "1.625",
+};
+
 /**
- * The viewing user's effective semantic-token stylesheet (D26) — a `:root`
- * block naming only tokens `styles.css` already declares as CSS custom
- * properties. Computed fresh from the stored base colour every time, never
- * cached, so no stale value can survive a base-colour change.
+ * A generic font-family token's real stack (#95) — never a webfont name this
+ * project doesn't bundle, so a token always resolves to something real
+ * without a new dependency.
  */
-export function appearanceCss(baseColour: BaseColour): string {
-  const declarations = Object.entries(baseColourTokenValues[baseColour])
+const typesetFontStacks: Record<TypesetFontFamily, string> = {
+  sans: "ui-sans-serif, system-ui, sans-serif",
+  serif: "ui-serif, Georgia, serif",
+  mono: "ui-monospace, SFMono-Regular, Menlo, monospace",
+};
+
+/**
+ * The viewing user's effective stylesheet (D26, #95): a `:root` block naming
+ * only semantic colour tokens `styles.css` already declares, plus a `main`
+ * rule applying their typeset — the same dashboard root every card renders
+ * under, so one rule covers all of them without a card template naming a
+ * font or size of its own. Computed fresh from the stored appearance every
+ * time, never cached, so no stale value can survive a change.
+ *
+ * ponytail: `menuColour`/`menuAccent` are stored and generated into the
+ * user's `components.json` but have no CSS rule here yet — this codebase has
+ * no menu-shaped card template to style. Add the rule once one exists.
+ */
+export function appearanceCss(appearance: UserAppearance): string {
+  const colourDeclarations = Object.entries(
+    baseColourTokenValues[appearance.baseColour],
+  )
     .map(([token, value]) => `  --${token}: ${value};`)
     .join("\n");
-  return `:root {\n${declarations}\n}\n`;
+  const { typeset } = appearance;
+  return `:root {
+${colourDeclarations}
+}
+
+main {
+  font-size: calc(1rem * ${typeset.size});
+  line-height: ${typesetLeadingValues[typeset.leading]};
+  text-wrap: ${typeset.flow};
+  font-family: ${typesetFontStacks[typeset.bodyFont]};
+}
+
+main :is(h1, h2, h3, h4, h5, h6) {
+  font-family: ${typesetFontStacks[typeset.headingFont]};
+}
+
+main :is(code, pre, kbd, samp) {
+  font-family: ${typesetFontStacks[typeset.monospaceFont]};
+}
+`;
 }

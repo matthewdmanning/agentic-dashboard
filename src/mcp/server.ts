@@ -7,7 +7,10 @@ import {
   compositionNodeSchema,
   dashboardSchema,
   integrationSchema,
+  menuAccentSchema,
+  menuColourSchema,
   themeSchema,
+  typesetSchema,
   type Mutation,
 } from "../contract";
 import { ServiceFailure, type DashboardService } from "../service";
@@ -198,16 +201,6 @@ export function createDashboardMcpServer(service: DashboardService) {
   );
 
   server.registerTool(
-    "set-font-scale",
-    {
-      description: "Set the dashboard font scale.",
-      inputSchema: z.object({ fontScale: z.number().min(0.75).max(2) }),
-    },
-    async ({ fontScale }) =>
-      apply({ type: "set-font-scale", fontScale }, "Font scale updated"),
-  );
-
-  server.registerTool(
     "add-integration",
     {
       description: "Add an integration.",
@@ -325,7 +318,7 @@ export function createDashboardMcpServer(service: DashboardService) {
     "read-appearance",
     {
       description:
-        "Read your own appearance preference (base colour) and its derived stylesheet.",
+        "Read your own appearance preference (base colour, typeset, menu treatment) and its derived stylesheet.",
       inputSchema: z.object({}),
     },
     async () =>
@@ -343,6 +336,40 @@ export function createDashboardMcpServer(service: DashboardService) {
       reply(async () => {
         await service.setAppearance({ baseColour });
         return "Appearance updated";
+      }),
+  );
+
+  server.registerTool(
+    "set-typeset",
+    {
+      description:
+        "Set your own complete typeset (size, leading, flow, body/heading/monospace font). Replaces fontScale — size is the same setting under shadcn's own vocabulary. Applies only to you.",
+      inputSchema: z.object({ typeset: typesetSchema }),
+    },
+    async ({ typeset }) =>
+      reply(async () => {
+        await service.setAppearance({ typeset });
+        return "Typeset updated";
+      }),
+  );
+
+  server.registerTool(
+    "set-menu-appearance",
+    {
+      description:
+        "Set your own shadcn menu colour and/or accent. Applies only to you.",
+      inputSchema: z.object({
+        menuColour: menuColourSchema.optional(),
+        menuAccent: menuAccentSchema.optional(),
+      }),
+    },
+    async ({ menuColour, menuAccent }) =>
+      reply(async () => {
+        await service.setAppearance({
+          ...(menuColour ? { menuColour } : {}),
+          ...(menuAccent ? { menuAccent } : {}),
+        });
+        return "Menu appearance updated";
       }),
   );
 

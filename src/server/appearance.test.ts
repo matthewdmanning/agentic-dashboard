@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
+import { defaultUserAppearance, type UserAppearance } from "../contract";
 import {
   appearanceCss,
   createFileAppearanceStore,
@@ -10,6 +11,10 @@ import {
   readComponentsTemplate,
   writeUserComponentsConfig,
 } from "./appearance";
+
+function appearance(overrides: Partial<UserAppearance> = {}): UserAppearance {
+  return { ...defaultUserAppearance, ...overrides };
+}
 
 describe("readComponentsTemplate (D33)", () => {
   test("strips the user-owned fields a components.json on disk still carries", () => {
@@ -38,8 +43,8 @@ describe("readComponentsTemplate (D33)", () => {
   });
 });
 
-describe("generateUserComponentsConfig (D34)", () => {
-  test("overlays only the user's base colour, replacing the config as a whole", () => {
+describe("generateUserComponentsConfig (D34, #95)", () => {
+  test("overlays base colour and menu fields, replacing the config as a whole", () => {
     const template = readComponentsTemplate({
       style: "new-york",
       rsc: false,
@@ -55,14 +60,21 @@ describe("generateUserComponentsConfig (D34)", () => {
       aliases: {},
     });
 
-    const config = generateUserComponentsConfig(template, {
-      baseColour: "zinc",
-    });
+    const config = generateUserComponentsConfig(
+      template,
+      appearance({
+        baseColour: "zinc",
+        menuColour: "inverted",
+        menuAccent: "bold",
+      }),
+    );
 
     expect(config).toMatchObject({
       style: "new-york",
       iconLibrary: "lucide",
       tailwind: { cssVariables: true, baseColor: "zinc" },
+      menuColor: "inverted",
+      menuAccent: "bold",
     });
   });
 });
@@ -90,12 +102,18 @@ describe("writeUserComponentsConfig (D34, #94)", () => {
       }),
     );
 
-    await writeUserComponentsConfig(componentsDir, templatePath, "alice", {
-      baseColour: "slate",
-    });
-    await writeUserComponentsConfig(componentsDir, templatePath, "alice", {
-      baseColour: "stone",
-    });
+    await writeUserComponentsConfig(
+      componentsDir,
+      templatePath,
+      "alice",
+      appearance({ baseColour: "slate" }),
+    );
+    await writeUserComponentsConfig(
+      componentsDir,
+      templatePath,
+      "alice",
+      appearance({ baseColour: "stone" }),
+    );
 
     const generated = JSON.parse(
       await readFile(join(componentsDir, "alice.json"), "utf8"),
@@ -104,10 +122,12 @@ describe("writeUserComponentsConfig (D34, #94)", () => {
   });
 });
 
-describe("appearanceCss (D26)", () => {
+describe("appearanceCss (D26, #95)", () => {
   test("every base colour produces a distinct, non-empty stylesheet", () => {
     const colours = ["neutral", "gray", "zinc", "stone", "slate"] as const;
-    const stylesheets = colours.map(appearanceCss);
+    const stylesheets = colours.map((baseColour) =>
+      appearanceCss(appearance({ baseColour })),
+    );
 
     for (const css of stylesheets) {
       expect(css).toContain(":root {");
@@ -115,6 +135,29 @@ describe("appearanceCss (D26)", () => {
       expect(css).toContain("--primary");
     }
     expect(new Set(stylesheets).size).toBe(colours.length);
+  });
+
+  test("applies the typeset to the dashboard root, not a card template", () => {
+    const css = appearanceCss(
+      appearance({
+        typeset: {
+          size: 1.25,
+          leading: "relaxed",
+          flow: "balance",
+          bodyFont: "serif",
+          headingFont: "mono",
+          monospaceFont: "sans",
+        },
+      }),
+    );
+
+    expect(css).toContain("main {");
+    expect(css).toContain("calc(1rem * 1.25)");
+    expect(css).toContain("line-height: 1.625");
+    expect(css).toContain("text-wrap: balance");
+    expect(css).toContain("ui-serif");
+    expect(css).toContain("main :is(h1, h2, h3, h4, h5, h6)");
+    expect(css).toContain("ui-monospace");
   });
 });
 
@@ -125,10 +168,13 @@ describe("createFileAppearanceStore (D33-D35)", () => {
       "appearance.json",
     );
 
-    await createFileAppearanceStore(path).set("alice", { baseColour: "gray" });
+    await createFileAppearanceStore(path).set(
+      "alice",
+      appearance({ baseColour: "gray" }),
+    );
 
     await expect(createFileAppearanceStore(path).get("alice")).resolves.toEqual(
-      { baseColour: "gray" },
+      appearance({ baseColour: "gray" }),
     );
   });
 

@@ -2,7 +2,11 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
-import { defaultDashboardConfiguration, type Mutation } from "../contract";
+import {
+  defaultDashboardConfiguration,
+  defaultUserAppearance,
+  type Mutation,
+} from "../contract";
 import { Settings } from "./Settings";
 
 function render(
@@ -11,7 +15,7 @@ function render(
   blockedIntegrationNotices: string[] = [],
   unavailableQueryNotices: string[] = [],
   appearance: Parameters<typeof Settings>[0]["appearance"] = {
-    baseColour: "neutral",
+    ...defaultUserAppearance,
     css: "",
   },
 ) {
@@ -42,10 +46,9 @@ describe("Settings contract", () => {
     const html = render({
       dashboard: defaultDashboardConfiguration.dashboard,
       themes: defaultDashboardConfiguration.themes,
-      fontScale: defaultDashboardConfiguration.fontScale,
     });
 
-    expect(html).toContain("Font scale");
+    expect(html).toContain("Theme");
     expect(html).not.toContain("Integrations");
     expect(html).not.toContain("Roles");
   });
@@ -180,7 +183,11 @@ describe("Settings contract", () => {
 
   test("shows the caller's own base colour, ungated by any permission (#94)", () => {
     const appearance = fieldset(
-      render({}, undefined, [], [], { baseColour: "slate", css: "" }),
+      render({}, undefined, [], [], {
+        ...defaultUserAppearance,
+        baseColour: "slate",
+        css: "",
+      }),
       "Appearance",
     );
 
@@ -196,5 +203,34 @@ describe("Settings contract", () => {
     const html = render({});
 
     expect(html).toContain("Appearance");
+  });
+
+  test("shows the caller's own typeset and menu treatment, closed to the supported vocabularies (#95)", () => {
+    const appearance = fieldset(
+      render({}, undefined, [], [], {
+        ...defaultUserAppearance,
+        typeset: {
+          size: 1.2,
+          leading: "relaxed",
+          flow: "balance",
+          bodyFont: "serif",
+          headingFont: "mono",
+          monospaceFont: "sans",
+        },
+        menuColour: "inverted",
+        menuAccent: "bold",
+        css: "",
+      }),
+      "Appearance",
+    );
+
+    expect(appearance).toContain('value="relaxed" selected');
+    expect(appearance).toContain('value="balance" selected');
+    expect(appearance).toContain('value="serif" selected');
+    expect(appearance).toContain('value="mono" selected');
+    expect(appearance).toContain('value="sans" selected');
+    expect(appearance).toContain('value="inverted" selected');
+    expect(appearance).toContain('value="bold" selected');
+    expect(appearance).not.toContain("Font scale");
   });
 });

@@ -8,7 +8,7 @@ import { provisionLocalUserToken } from "../auth/local-user";
 import {
   parseDashboardConfiguration,
   type Mutation,
-  type UserAppearance,
+  type PartialUserAppearance,
 } from "../contract";
 import { createFileAppearanceStore } from "./appearance";
 import {
@@ -360,12 +360,9 @@ export async function handleAppearanceRequest(
     }
 
     if (request.method === "POST") {
-      const body = (await request.json()) as Partial<UserAppearance>;
+      const body = (await request.json()) as PartialUserAppearance;
       return Response.json(
-        await service.setAppearance(
-          body as UserAppearance,
-          credentialFromRequest(request),
-        ),
+        await service.setAppearance(body, credentialFromRequest(request)),
       );
     }
 

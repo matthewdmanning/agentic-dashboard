@@ -120,21 +120,92 @@ export const baseColourSchema = z.enum(baseColours);
 
 export type BaseColour = z.infer<typeof baseColourSchema>;
 
+/** Tailwind's `leading-*` scale, closed to a representative subset (D33). */
+export const typesetLeadings = ["tight", "normal", "relaxed"] as const;
+export const typesetLeadingSchema = z.enum(typesetLeadings);
+export type TypesetLeading = z.infer<typeof typesetLeadingSchema>;
+
+/** CSS `text-wrap`'s own keyword set (D33) — how a paragraph's lines wrap, never arbitrary CSS. */
+export const typesetFlows = ["wrap", "balance", "pretty"] as const;
+export const typesetFlowSchema = z.enum(typesetFlows);
+export type TypesetFlow = z.infer<typeof typesetFlowSchema>;
+
+/**
+ * Generic font-family tokens (D33) rather than named webfonts: this project
+ * bundles one font (Geist), so "pick a font" would otherwise mean bundling
+ * more just to have choices. A token maps to a real font-stack, never
+ * arbitrary CSS, and needs no new dependency to add a second real choice
+ * later.
+ */
+export const typesetFontFamilies = ["sans", "serif", "mono"] as const;
+export const typesetFontFamilySchema = z.enum(typesetFontFamilies);
+export type TypesetFontFamily = z.infer<typeof typesetFontFamilySchema>;
+
+/** The complete typeset preference (#95) — `size` is `fontScale` under a name that matches the rest of this vocabulary (D33). */
+export const typesetSchema = z
+  .object({
+    size: z.number().min(0.75).max(2),
+    leading: typesetLeadingSchema,
+    flow: typesetFlowSchema,
+    bodyFont: typesetFontFamilySchema,
+    headingFont: typesetFontFamilySchema,
+    monospaceFont: typesetFontFamilySchema,
+  })
+  .strict();
+
+export type Typeset = z.infer<typeof typesetSchema>;
+
+export const defaultTypeset: Typeset = {
+  size: 1,
+  leading: "normal",
+  flow: "wrap",
+  bodyFont: "sans",
+  headingFont: "sans",
+  monospaceFont: "mono",
+};
+
+/** shadcn's own supported menu-colour treatments (#95) — closed, never arbitrary. */
+export const menuColours = [
+  "default",
+  "inverted",
+  "default-translucent",
+  "inverted-translucent",
+] as const;
+export const menuColourSchema = z.enum(menuColours);
+export type MenuColour = z.infer<typeof menuColourSchema>;
+
+/** shadcn's own supported menu-accent weights (#95) — closed, never arbitrary. */
+export const menuAccents = ["subtle", "bold"] as const;
+export const menuAccentSchema = z.enum(menuAccents);
+export type MenuAccent = z.infer<typeof menuAccentSchema>;
+
 /**
  * A user's own appearance choices (D26, D27, D33-D35): theirs by structure,
  * never gated by the permission matrix, and closed to shadcn's own
- * vocabulary rather than arbitrary CSS. Typeset and menu fields join this in
- * #95.
+ * vocabulary rather than arbitrary CSS.
  */
 export const userAppearanceSchema = z
   .object({
     baseColour: baseColourSchema,
+    typeset: typesetSchema,
+    menuColour: menuColourSchema,
+    menuAccent: menuAccentSchema,
   })
   .strict();
 
 export type UserAppearance = z.infer<typeof userAppearanceSchema>;
 
-export const defaultUserAppearance: UserAppearance = { baseColour: "neutral" };
+/** A partial update to a user's own appearance (#95) — `setAppearance` merges this onto the caller's stored preference (or the default) rather than requiring every field on every call. */
+export const partialUserAppearanceSchema = userAppearanceSchema.partial();
+
+export type PartialUserAppearance = z.infer<typeof partialUserAppearanceSchema>;
+
+export const defaultUserAppearance: UserAppearance = {
+  baseColour: "neutral",
+  typeset: defaultTypeset,
+  menuColour: "default",
+  menuAccent: "subtle",
+};
 
 const fieldSpecSchema = z
   .object({
@@ -240,7 +311,6 @@ export const dashboardConfigurationSchema = z
     integrations: z.array(integrationSchema),
     themes: z.array(themeSchema),
     dashboard: dashboardSchema,
-    fontScale: z.number().min(0.75).max(2),
     cards: z.array(cardSchema),
     // The shared card mapper store (D38): a query names one of these by
     // `name` rather than holding a copy.
@@ -327,13 +397,6 @@ const editThemeMutationSchema = z
   .object({
     type: z.literal("edit-theme"),
     theme: themeSchema,
-  })
-  .strict();
-
-const setFontScaleMutationSchema = z
-  .object({
-    type: z.literal("set-font-scale"),
-    fontScale: z.number().min(0.75).max(2),
   })
   .strict();
 
@@ -465,7 +528,6 @@ export const mutationSchema = z.discriminatedUnion("type", [
   addThemeMutationSchema,
   editThemeMutationSchema,
   removeThemeMutationSchema,
-  setFontScaleMutationSchema,
   addIntegrationMutationSchema,
   editIntegrationMutationSchema,
   removeIntegrationMutationSchema,
@@ -502,7 +564,6 @@ export const mutationRequirements = {
   "add-theme": { category: "presentation", level: "write" },
   "edit-theme": { category: "presentation", level: "edit" },
   "remove-theme": { category: "presentation", level: "write" },
-  "set-font-scale": { category: "presentation", level: "edit" },
   "add-integration": { category: "integrations", level: "write" },
   "edit-integration": { category: "integrations", level: "edit" },
   "remove-integration": { category: "integrations", level: "write" },
@@ -527,7 +588,6 @@ export const defaultDashboardConfiguration: DashboardConfiguration = {
   integrations: [],
   themes: [{ id: "calm", settings: {} }],
   dashboard: { id: "home", cards: ["welcome"], theme: "calm" },
-  fontScale: 1,
   cards: [
     {
       id: "welcome",

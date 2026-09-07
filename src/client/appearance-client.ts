@@ -1,4 +1,4 @@
-import type { UserAppearance } from "../contract";
+import type { PartialUserAppearance, UserAppearance } from "../contract";
 import { authorized, failureFrom } from "./request";
 
 /** A user's own appearance preference plus its derived stylesheet (D26, #94). */
@@ -15,16 +15,16 @@ export async function loadAppearance(): Promise<AppearanceView> {
   return (await response.json()) as AppearanceView;
 }
 
-/** Replaces the caller's own appearance preference as a whole (D34). Ungated — not a mutation, like `connectIntegration`. */
+/** Merges an update onto the caller's stored appearance (D34, #95). Ungated — not a mutation, like `connectIntegration`. */
 export async function setAppearance(
-  appearance: UserAppearance,
+  update: PartialUserAppearance,
 ): Promise<AppearanceView> {
   const response = await fetch(
     "/api/appearance",
     authorized({
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(appearance),
+      body: JSON.stringify(update),
     }),
   );
   if (!response.ok) {
