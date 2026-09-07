@@ -207,6 +207,14 @@ export interface DashboardService {
    * delete one without ever reading its contents back through the service.
    */
   removeUserQuery(user: string, id: string, credential?: string): Promise<void>;
+  /**
+   * The resolved caller's own identity, or `undefined` for an unauthenticated
+   * caller (D35) — the one way outside `service` to learn who a credential
+   * belongs to, without exposing anyone else's. Refresh (#90) uses this to
+   * scope a connection lookup by owner, the same identity `connect` and
+   * `disconnect` already key a caller's own connection by.
+   */
+  owner(credential?: string): Promise<string | undefined>;
 }
 
 export function createService(dependencies: Dependencies): DashboardService {
@@ -257,6 +265,10 @@ export function createService(dependencies: Dependencies): DashboardService {
       enqueue(() => removeQuery(dependencies, id, credential)),
     removeUserQuery: (user, id, credential) =>
       enqueue(() => removeUserQuery(dependencies, user, id, credential)),
+    owner: (credential) =>
+      enqueue(() =>
+        resolveCaller(dependencies, credential).then((caller) => caller.user),
+      ),
   };
 }
 

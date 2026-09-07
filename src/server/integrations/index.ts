@@ -1,4 +1,12 @@
-import { compileCardMapper, type CardMapper, type Integration } from "../../contract";
+import * as z from "zod/v4";
+
+import {
+  cardTemplateSchemas,
+  compileCardMapper,
+  type Card,
+  type CardMapper,
+  type Integration,
+} from "../../contract";
 import type { DashboardService } from "../../service";
 import type { StoredQuery } from "../../service/queries";
 import { identityCardMapper } from "../../client/card-mappers/identity";
@@ -9,6 +17,12 @@ import { pullGoogleCalendar, type FetchCalendar } from "./google-calendar";
  * backup target — D16), by the id that names it. The one seam every pull
  * goes through to reach a stored credential; no adapter reads a store of
  * its own.
+ *
+ * Scoped to one owner per `refreshCardQueries` call (#90): the caller who
+ * requested the refresh, resolved once by `server/index.ts` and closed over
+ * here, never a payload field and never substituted with another user's
+ * connection. Every query in one refresh batch is that same caller's own
+ * (D32), so one closed-over owner is correct for the whole batch.
  */
 export type TokenProvider = (connectionId: string) => Promise<string>;
 
@@ -60,11 +74,16 @@ function resolveCardMapper(
 
 /**
  * Runs a set of queries — the caller's own, resolved from their private store
- * (D32) — pulling each one's integration, shaping the result with the card
- * mapper it names, resolved against the shared store (D38), and applying it
- * as its card's new state through `service.apply`. Nothing else persists a
- * pull — a pulled result is transient (fetch, map, apply, discard); if a
- * mapper changes, re-pull. One query's failure does not stop the rest.
+ * (D32) — pulling each one's integration under `context.tokenProvider`
+ * (resolved for one owner, #90: the caller who requested this refresh, never
+ * substituted with anyone else's), shaping the result with the card mapper it
+ * names, resolved against the shared store (D38), validating the shaped
+ * result against its target card's template schema, and only then applying it
+ * as the card's new state through `service.apply`. A shaped result that does
+ * not fit its card's template never reaches shared state. Nothing else
+ * persists a pull — a pulled result is transient (fetch, map, validate, apply,
+ * discard); if a mapper changes, re-pull. One query's failure does not stop
+ * the rest.
  *
  * Card state stays shared (D30): when two users' queries feed the same card,
  * whichever refresh's `patch-card-state` lands last is what everyone sees —
@@ -75,6 +94,7 @@ export async function refreshCardQueries(
   queries: readonly StoredQuery[],
   integrations: readonly Integration[],
   cardMappers: readonly CardMapper[],
+  cards: readonly Card[],
   context: PullContext & { service: DashboardService; credential?: string },
 ): Promise<QueryRefresh[]> {
   const refreshes: QueryRefresh[] = [];
@@ -108,11 +128,39 @@ export async function refreshCardQueries(
       continue;
     }
 
+    const card = cards.find(({ id }) => id === query.cardId);
+    if (!card) {
+      refreshes.push({
+        cardId: query.cardId,
+        status: "failed",
+        message: `Unknown card: ${query.cardId}`,
+      });
+      continue;
+    }
+    const schema = cardTemplateSchemas[card.template];
+    if (!schema) {
+      refreshes.push({
+        cardId: query.cardId,
+        status: "failed",
+        message: `Unknown card template: ${card.template}`,
+      });
+      continue;
+    }
+
     try {
       const source = await pull(integration, query.query, context);
       const patch = mapper(source);
+      const validated = schema.safeParse(patch);
+      if (!validated.success) {
+        refreshes.push({
+          cardId: query.cardId,
+          status: "failed",
+          message: `Mapped result does not fit card template '${card.template}': ${z.prettifyError(validated.error)}`,
+        });
+        continue;
+      }
       await context.service.apply(
-        [{ type: "patch-card-state", cardId: query.cardId, patch }],
+        [{ type: "patch-card-state", cardId: query.cardId, patch: validated.data }],
         context.credential,
       );
       refreshes.push({ cardId: query.cardId, status: "refreshed" });

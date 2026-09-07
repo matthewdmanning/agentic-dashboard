@@ -1,5 +1,4 @@
 import { createServer } from "node:http";
-import { userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { createServer as createViteServer } from "vite";
@@ -15,7 +14,10 @@ import {
   type ServiceFailureCode,
 } from "../service";
 import { createEncryptedQueryStore } from "../service/queries";
-import { createEncryptedConnectionStore } from "./integrations/connections";
+import {
+  createEncryptedConnectionStore,
+  type ConnectionStore,
+} from "./integrations/connections";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
 import { reconcileIntegrationRetention } from "./integrations/retention";
 import {
@@ -152,11 +154,17 @@ function credentialFromRequest(request: Request): string | undefined {
   return match[1];
 }
 
+/**
+ * Scopes every pull in this refresh to one owner (#90): the caller who
+ * requested it, resolved once via `service.owner` and closed over here —
+ * never a payload field, and never substituted with another user's
+ * connection when theirs is missing or was disconnected.
+ */
 export async function handleIntegrationRefreshRequest(
   request: Request,
   dependencies: {
     service: DashboardService;
-    tokenProvider: TokenProvider;
+    connections: ConnectionStore;
     fetch?: FetchCalendar;
   },
 ): Promise<Response> {
@@ -164,14 +172,30 @@ export async function handleIntegrationRefreshRequest(
     return new Response("Method not allowed", { status: 405 });
   }
   const credential = credentialFromRequest(request);
-  const [queries, integrations, cardMappers] = await Promise.all([
-    dependencies.service.read("queries", credential),
-    dependencies.service.read("integrations", credential),
-    dependencies.service.read("cardMappers", credential),
-  ]);
+  const [owner, queries, integrations, cardMappers, cards] =
+    await Promise.all([
+      dependencies.service.owner(credential),
+      dependencies.service.read("queries", credential),
+      dependencies.service.read("integrations", credential),
+      dependencies.service.read("cardMappers", credential),
+      dependencies.service.read("cards", credential),
+    ]);
+  const tokenProvider: TokenProvider = async (catalogEntryId) => {
+    const connectionCredential = owner
+      ? await dependencies.connections.get(owner, catalogEntryId)
+      : undefined;
+    if (!connectionCredential) {
+      throw new Error(
+        `Integration '${catalogEntryId}' is not connected. Connect it in Settings.`,
+      );
+    }
+    return connectionCredential;
+  };
   return Response.json(
-    await refreshCardQueries(queries, integrations, cardMappers, {
-      ...dependencies,
+    await refreshCardQueries(queries, integrations, cardMappers, cards, {
+      tokenProvider,
+      fetch: dependencies.fetch,
+      service: dependencies.service,
       credential,
     }),
   );
@@ -334,28 +358,6 @@ async function startServer() {
       integrationRetentionDays,
     );
   }
-  // Internal plumbing for the server's own outbound calls, not a caller-facing
-  // operation -- reads the same store `service` composes, directly.
-  //
-  // ponytail: resolves under the local OS account rather than each query's
-  // actual owner. `TokenProvider` (`server/integrations/index.ts`) has no
-  // owner parameter yet — threading a resolved caller through refresh is
-  // #90's job, which is expected to change this signature. Until then this
-  // matches every other caller this build treats as local when no auth is
-  // configured (D35), and is exactly what the credential store this
-  // replaces did.
-  const tokenProvider: TokenProvider = async (integrationId) => {
-    const credential = await connections.get(
-      userInfo().username,
-      integrationId,
-    );
-    if (!credential) {
-      throw new Error(
-        `Integration '${integrationId}' is not connected. Connect it in Settings.`,
-      );
-    }
-    return credential;
-  };
   const vite = await createViteServer({ server: { middlewareMode: true } });
   const server = createServer(async (request, response) => {
     if (request.url?.startsWith("/api/dashboard-configuration")) {
@@ -463,7 +465,7 @@ async function startServer() {
               ? Buffer.concat(chunks).toString("utf8")
               : undefined,
           }),
-          { tokenProvider, service },
+          { connections, service },
         );
         response.writeHead(result.status, Object.fromEntries(result.headers));
         response.end(Buffer.from(await result.arrayBuffer()));

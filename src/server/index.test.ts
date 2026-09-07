@@ -265,12 +265,14 @@ describe("integration refresh endpoint", () => {
       query: {},
       cardMapper: "identity",
     });
+    const connections = createMemoryConnectionStore();
+    await connections.set(userInfo().username, "team-calendar", "access-token");
 
     const response = await handleIntegrationRefreshRequest(
       new Request("http://dashboard/api/integrations/refresh", {
         method: "POST",
       }),
-      { service, tokenProvider: async () => "access-token", fetch: pull },
+      { service, connections, fetch: pull },
     );
 
     expect(response.status).toBe(200);
@@ -333,12 +335,14 @@ describe("integration refresh endpoint", () => {
     ]);
     await service.addQuery({ ...calendarQuery, cardId: "card-a" });
     await service.addQuery({ ...calendarQuery, cardId: "card-b" });
+    const connections = createMemoryConnectionStore();
+    await connections.set(userInfo().username, "team-calendar", "access-token");
 
     const response = await handleIntegrationRefreshRequest(
       new Request("http://dashboard/api/integrations/refresh", {
         method: "POST",
       }),
-      { service, tokenProvider: async () => "access-token", fetch: pull },
+      { service, connections, fetch: pull },
     );
 
     expect(response.status).toBe(200);
@@ -378,12 +382,7 @@ describe("integration refresh endpoint", () => {
       new Request("http://dashboard/api/integrations/refresh", {
         method: "POST",
       }),
-      {
-        service,
-        tokenProvider: async () => {
-          throw new Error("Credentials are not configured");
-        },
-      },
+      { service, connections: createMemoryConnectionStore() },
     );
 
     expect(response.status).toBe(200);
@@ -391,9 +390,202 @@ describe("integration refresh endpoint", () => {
       {
         cardId: "calendar-card",
         status: "failed",
-        message: "Credentials are not configured",
+        message:
+          "Integration 'team-calendar' is not connected. Connect it in Settings.",
       },
     ]);
+  });
+
+  test("two users querying the same integration use their own distinct connections, and losing one breaks only that user's refresh (#90)", async () => {
+    const configuration = {
+      ...defaultDashboardConfiguration,
+      integrations: [
+        { id: "team-calendar", type: "google-calendar", settings: {} },
+      ],
+      cards: [
+        ...defaultDashboardConfiguration.cards,
+        {
+          id: "alice-card",
+          title: "Alice",
+          template: "calendar",
+          state: { events: [] },
+        },
+        {
+          id: "bob-card",
+          title: "Bob",
+          template: "calendar",
+          state: { events: [] },
+        },
+      ],
+    };
+    const authStore = {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : undefined,
+    };
+    const service = createService({
+      persistence: createMemoryPersistence(configuration),
+      authStore,
+      queries: createMemoryUserQueryStore(),
+    });
+    await service.apply([
+      { type: "add-card-mapper", name: "events", spec: calendarMapperSpec },
+    ]);
+    await service.addQuery(
+      { ...calendarQuery, cardId: "alice-card" },
+      "alice-token",
+    );
+    await service.addQuery(
+      { ...calendarQuery, cardId: "bob-card" },
+      "bob-token",
+    );
+    const connections = createMemoryConnectionStore();
+    await connections.set("alice", "team-calendar", "alice-secret");
+    await connections.set("bob", "team-calendar", "bob-secret");
+    const pull = vi.fn(async (_url: string, init?: RequestInit) => {
+      const authorization = (init?.headers as Record<string, string>)
+        .Authorization;
+      if (authorization === "Bearer alice-secret") {
+        return Response.json({
+          items: [
+            {
+              id: "a1",
+              summary: "Alice Event",
+              start: { dateTime: "2026-01-01T00:00:00Z" },
+            },
+          ],
+        });
+      }
+      if (authorization === "Bearer bob-secret") {
+        return Response.json({
+          items: [
+            {
+              id: "b1",
+              summary: "Bob Event",
+              start: { dateTime: "2026-01-02T00:00:00Z" },
+            },
+          ],
+        });
+      }
+      throw new Error(`Unexpected credential: ${authorization}`);
+    });
+
+    await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+        headers: { authorization: "Bearer alice-token" },
+      }),
+      { service, connections, fetch: pull },
+    );
+    await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+        headers: { authorization: "Bearer bob-token" },
+      }),
+      { service, connections, fetch: pull },
+    );
+
+    const cards = await service.read("cards", "alice-token");
+    expect(cards.find(({ id }) => id === "alice-card")).toMatchObject({
+      state: { events: [{ id: "a1", title: "Alice Event" }] },
+    });
+    expect(cards.find(({ id }) => id === "bob-card")).toMatchObject({
+      state: { events: [{ id: "b1", title: "Bob Event" }] },
+    });
+
+    // Losing alice's connection breaks only alice's refresh.
+    await connections.remove("alice", "team-calendar");
+    const aliceRetry = await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+        headers: { authorization: "Bearer alice-token" },
+      }),
+      { service, connections, fetch: pull },
+    );
+    await expect(aliceRetry.json()).resolves.toEqual([
+      {
+        cardId: "alice-card",
+        status: "failed",
+        message:
+          "Integration 'team-calendar' is not connected. Connect it in Settings.",
+      },
+    ]);
+    const bobRetry = await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+        headers: { authorization: "Bearer bob-token" },
+      }),
+      { service, connections, fetch: pull },
+    );
+    await expect(bobRetry.json()).resolves.toEqual([
+      { cardId: "bob-card", status: "refreshed" },
+    ]);
+  });
+
+  test("a mapped result that does not fit its card's template schema is rejected before it reaches shared state (#90)", async () => {
+    const service = createTestService({
+      ...defaultDashboardConfiguration,
+      integrations: [
+        { id: "team-calendar", type: "google-calendar", settings: {} },
+      ],
+      cards: [
+        ...defaultDashboardConfiguration.cards,
+        {
+          id: "calendar-card",
+          title: "Calendar",
+          template: "calendar",
+          state: { events: [] },
+        },
+      ],
+    });
+    // This spec's output never carries `title`, which the calendar template
+    // requires -- every mapped event fails the schema.
+    await service.apply([
+      {
+        type: "add-card-mapper",
+        name: "titleless-events",
+        spec: {
+          shape: "array",
+          from: ["items"],
+          into: "events",
+          fields: { id: { from: ["id"], coerce: "string" } },
+        },
+      },
+    ]);
+    await service.addQuery({
+      integration: "team-calendar",
+      query: { calendarId: "team" },
+      cardMapper: "titleless-events",
+      cardId: "calendar-card",
+    });
+    const connections = createMemoryConnectionStore();
+    await connections.set(userInfo().username, "team-calendar", "access-token");
+    const pull = vi.fn(async () =>
+      Response.json({ items: [{ id: "event-1" }] }),
+    );
+
+    const response = await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+      }),
+      { service, connections, fetch: pull },
+    );
+
+    expect(response.status).toBe(200);
+    const body: Array<{ cardId: string; status: string; message?: string }> =
+      await response.json();
+    expect(body).toEqual([
+      expect.objectContaining({ cardId: "calendar-card", status: "failed" }),
+    ]);
+    expect(body[0]?.message).toMatch(/card template/i);
+
+    const cards = await service.read("cards");
+    expect(cards.find(({ id }) => id === "calendar-card")).toMatchObject({
+      state: { events: [] },
+    });
   });
 });
 
