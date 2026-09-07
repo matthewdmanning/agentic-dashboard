@@ -2,6 +2,16 @@
 
 ## Status
 
+**Lowest authority in the repo.** This is the founding draft, written before
+the shadcn/ui rewrite and the permission-matrix decisions. It was never
+maintained through those changes and is known to contradict at least the
+current permissions model (it describes Settings as changing agent
+permissions; that is no longer true). Where this document conflicts with
+anything else — code, `CONTEXT.md`, `ARCHITECTURE.md`, or any decision — the
+other source wins, without exception. Treat this file as historical context
+for the product's original goals, not as a current requirement, and verify
+anything load-bearing against the real thing before relying on it.
+
 Draft product specification: what the product must do. Items without a decision are explicitly marked **Open**.
 
 This document does not describe how the product is built, and does not define terms. See [`ARCHITECTURE.md`](../ARCHITECTURE.md) and [`CONTEXT.md`](../CONTEXT.md).
@@ -12,31 +22,29 @@ A general dashboard for viewing and managing the user's chosen information and a
 
 The product is a one-page local web app whose application package is ready to run in a deployment environment. It does not have a separate landing or focus page. Building or provisioning cloud infrastructure is out of scope.
 
-The implementation is not constrained to a single static HTML file. A broader web framework or supporting toolchain may be used when needed to meet the product requirements.
-
 ## Goals
 
 - Help the user prioritize and focus on the actions and information most relevant now.
-- Persist user changes through a backend rather than only in browser memory.
+- Persist user changes durably, across sessions and browser restarts.
 - Keep the dashboard usable locally without requiring network access.
-- Keep content available as a local JSON file, so local AI tools can use it as context.
+- Keep content available in a form local AI tools can use as context.
 - Allow optional connections to external services and optional cloud storage.
 - Support included and third-party themes.
-- Allow agents to create or change cards, their UIs, JSON Schemas, formatter code, data wiring, and arrangement in response to user prompts.
-- Allow interaction with AI agents through dashboard state-management tools, including an MCP interface.
+- Allow agents to create or change cards — their appearance, the data they accept, and their arrangement — in response to user prompts.
+- Allow interaction with AI agents through dashboard state-management tools.
 
 ## First-release completion boundary
 
 The first release is not complete until it includes all of the following:
 
-- Local persistence through the backend.
-- Agent-created or agent-changed cards composed of a UI and JSON Schema.
-- Persistent dashboard configuration for integrations, the selected UI theme, font scaling, agent permissions, cards, wiring, and arrangement.
+- Local persistence, durable across sessions and browser restarts.
+- Agent-created or agent-changed cards, each defining the shape of data it accepts.
+- Persistent dashboard configuration for integrations, the selected UI theme, font scaling, agent permissions, cards, and arrangement.
 - A Settings interface for directly managing integrations, themes, font scaling, and agent permissions without an agent.
 - Agent interaction governed by permissions configured in Settings.
-- Agentic tools, including an MCP interface, for inspecting and updating dashboard state.
-- A pull-only Google Calendar integration with locally retained data.
-- Encrypted Google Drive backup and restore.
+- Agentic tools for inspecting and updating dashboard state.
+- A pull-only third-party integration with locally retained data.
+- Encrypted third-party backup and restore.
 - Included and third-party themes that work offline after installation.
 - A deployment-ready application package that does not require cloud infrastructure or provisioning work to be part of this product.
 - Authentication when the dashboard is externally accessible; local-only access does not require authentication.
@@ -62,22 +70,20 @@ These capabilities may be built sequentially.
 - Settings is the sole interface for adding, changing, removing, and selecting themes.
 - Settings is the sole interface for changing font scaling.
 - Settings is the interface for changing agent permissions.
-- Settings does not create or edit cards, formatter code, card wiring, or card arrangement.
+- Card creation, card data mapping, and card arrangement happen through the agent interaction path, not Settings.
 - Settings changes persist through the dashboard-configuration persistence interface.
 - Credentials and tokens are not stored in dashboard data.
 - Whether Settings may change authentication configuration remains open.
 
-## Cards and data wiring
+## Cards and data
 
-- The agent creates and maintains the wiring between a source, a formatter, and a card.
-- The agent is responsible for ensuring formatted data fits its card template's schema.
-- Project-level preview of formatter output is out of scope.
+- Data entering a card, from any source, conforms to that card's schema.
+- Project-level preview of that mapping's output is out of scope.
 
 ## Agent interaction
 
 - The product offers an option to interact with AI agents.
 - The project includes agentic tools for inspecting and updating dashboard state.
-- The agentic tool surface includes an MCP interface.
 - Agent access to dashboard state is governed by permissions configured in Settings.
 - An agent session may be multi-step: the agent can ask follow-up questions before changing the dashboard.
 - Any agent action that changes a connected third-party service requires explicit user approval before it is applied.
@@ -99,7 +105,6 @@ These capabilities may be built sequentially.
 ## External-service integrations
 
 - External services are optional, user-authorized pull sources.
-- Google Calendar is an example integration: it may refresh its dashboard section when online.
 - The dashboard retains the last successfully synced data locally.
 - A failed or unavailable sync does not prevent use of other dashboard features.
 - First-release integrations are pull-only: they do not create, edit, or delete data in the external service.
@@ -119,8 +124,7 @@ These capabilities may be built sequentially.
 - The app may back up both settings and content to optional cloud storage and restore them later.
 - The dashboard does not require a cloud backup to operate.
 - The cloud backup target is user-defined rather than a fixed repository or provider.
-- Google Drive is the first cloud storage target.
-- Dropbox and other storage targets are planned for a later release.
+- Additional storage targets are planned for a later release.
 - Uploaded dashboard data must be encrypted.
 - First-release cloud storage does not synchronize edits between devices or reconcile concurrent changes.
 
@@ -142,7 +146,6 @@ The existing template's study-plan, calendar, and focus data shapes are specific
 - The persistence structure for dashboard data, settings, and backup metadata.
 - The exact value models and precedence rules for impact, urgency, and completion.
 - The encryption method, key ownership, recovery, and decryption behavior for cloud copies.
-- Google Drive authorization and sync behavior.
 - Cloud backup creation, retention, restoration, and overwrite behavior.
 - The MCP transport and lifecycle.
 - The authentication mechanism and external-access configuration.
@@ -153,7 +156,7 @@ The existing template's study-plan, calendar, and focus data shapes are specific
 
 ## Explicitly deferred
 
-- Dropbox and other cloud storage integrations.
+- Additional third-party integrations beyond the first.
 - External-service write-back.
 - A database.
 - Cloud infrastructure and provisioning.

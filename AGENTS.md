@@ -6,19 +6,27 @@ What you need, and where it lives. This file routes; it does not restate. Where 
 
 ## Read before working
 
-| You need                                                          | Read                                                                           |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| What was decided when planning — authoritative, ahead of the code | [`agent-docs/architecture-decisions.md`](agent-docs/architecture-decisions.md) |
-| What a term means                                                 | [`CONTEXT.md`](CONTEXT.md)                                                     |
-| How the app is built, and where a concern lives                   | [`ARCHITECTURE.md`](ARCHITECTURE.md)                                           |
-| Why a choice was made                                             | [`docs/agents/rationale.json`](docs/agents/rationale.json), keyed by term      |
-| How to write code here                                            | [`docs/agents/conventions.md`](docs/agents/conventions.md)                     |
-| The MCP tool surface                                              | [`docs/agents/mcp.md`](docs/agents/mcp.md)                                     |
-| How Github issues are tracked                                     | [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md)                 |
-| shadcn/ui documentation — index of every page, for lookup         | <https://ui.shadcn.com/llms.txt>                                               |
-| How `components.json` works, field by field                       | <https://ui.shadcn.com/docs/components-json>                                   |
-| Available commands                                                | `package.json` scripts                                                         |
-| Commit message style                                              | Conventional Commits; see `git log`                                            |
+| You need                                                                                                             | Read                                                                      |
+| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| What a term means in context of project                                                                              | [`CONTEXT.md`](CONTEXT.md)                                                |
+| How the app is built, and where a concern lives                                                                      | [`ARCHITECTURE.md`](ARCHITECTURE.md)                                      |
+| The MCP tool surface                                                                                                 | [`docs/agents/mcp.md`](docs/agents/mcp.md)                                |
+| shadcn/ui documentation — index of every page, for lookup                                                            | <https://ui.shadcn.com/llms.txt>                                          |
+| How `components.json` works, field by field                                                                          | <https://ui.shadcn.com/docs/components-json>                              |
+| Available script commands                                                                                            | `package.json` scripts                                                    |
+| Git commit message style                                                                                             | Conventional Commits; see `git log`                                       |
+| What was decided, and why -- ahead of the code                                                                       | [`docs/agents/rationale.json`](docs/agents/rationale.json), by id or term |
+| Notes left by a previous session, not yet promoted anywhere durable                                                  | [`.handoff/`](.handoff/) — see rules below                                |
+| Original product goals — lowest authority in the repo, unmaintained since the shadcn rewrite, verify before trusting | [`docs/product-spec.md`](docs/product-spec.md)                            |
+
+## Handoff notes
+
+`.handoff/` holds scratch context for whoever picks up next — not a source of
+truth, not routed to for facts about the project.
+
+- Filename starts with a `YYYY-MM-DD` prefix.
+- Commit these files. Never push them to the remote.
+- Delete the file once its task is complete. Don't leave a log.
 
 ## How to respond
 
@@ -28,10 +36,9 @@ What you need, and where it lives. This file routes; it does not restate. Where 
 
 ## Non-negotiables
 
-- Never commit credentials, tokens, personal content, real dashboard data, or sensitive field names or values. Fixtures are placeholder-only.
-- Keep the dashboard general-purpose. Job-search and study data are examples, never domain concepts.
-- Do not derive current requirements from material marked legacy, quarantined, superseded, archived, or backup.
+- Never commit credentials, tokens, personal content, or sensitive field names or values. Fixtures are placeholder-only.
+- Do not derive current requirements or criteria from material marked legacy, quarantined, superseded, archived, or backup.
 
 ## When documents disagree
 
-Each fact has exactly one home. Two documents stating the same fact is a bug — fix it by deleting one, not by deciding which wins.
+Each fact has exactly one home. Two documents stating the same fact is a bug — raise the issue if discovered.
