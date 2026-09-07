@@ -94,6 +94,23 @@ export function App() {
     }
   }
 
+  /**
+   * Both persistent integration notices (D40, #92, #93). Re-read after every
+   * mutation as well as on mount: blocking, unblocking, and removing an entry
+   * are all mutations, so a notice that only loaded once was stale the moment
+   * an administrator changed one — including in the tab that changed it.
+   * Neither notice is worth surfacing a failure over; a stale notice is
+   * better than an error banner over a working dashboard.
+   */
+  function loadIntegrationNotices(): void {
+    void loadBlockedIntegrationNotices()
+      .then(setBlockedIntegrationNotices)
+      .catch(() => undefined);
+    void loadUnavailableQueryNotices()
+      .then(setUnavailableQueryNotices)
+      .catch(() => undefined);
+  }
+
   useEffect(() => {
     void loadReadableDashboard()
       .then((loaded) => {
@@ -123,12 +140,7 @@ export function App() {
     void loadConnectableIntegrationTypes()
       .then(setConnectableTypes)
       .catch(() => undefined);
-    void loadBlockedIntegrationNotices()
-      .then(setBlockedIntegrationNotices)
-      .catch(() => undefined);
-    void loadUnavailableQueryNotices()
-      .then(setUnavailableQueryNotices)
-      .catch(() => undefined);
+    loadIntegrationNotices();
     void loadAppearance()
       .then(setAppearanceState)
       .catch(() => undefined);
@@ -144,6 +156,7 @@ export function App() {
       setDashboard(result);
       writeCachedDashboard(localStorage, result);
       setOffline(false);
+      loadIntegrationNotices();
     } catch (reason) {
       // `integrations` mutations require a live service (D15) and are never
       // queued — the caller sees this failure directly.
