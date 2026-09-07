@@ -33,8 +33,10 @@ Seven modules, as they exist today:
 
 Runtime dashboard data, the integration catalog, card-template candidates and
 active builds live at configurable paths outside `src/`. Roles live in a file
-`contract` imports; per-user preferences live in each user's own `.env`
-files; secrets live in the credential store. None of those is source code.
+`contract` imports; per-user appearance lives in its own file-backed store,
+one record per user, alongside the generated `components.json` each user's
+record produces; secrets live in the credential store. None of those is source
+code.
 
 The active card template is `message`, at `src/client/cards/message.tsx`,
 named by the default configuration's `welcome` card and served by the

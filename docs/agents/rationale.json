@@ -105,7 +105,7 @@
   },
   "D27": {
     "terms": ["per-user configuration", "base color", "preset"],
-    "text": "Each user's `.env` file(s) hold base colour, typeset, menu colour/accent, and preset selection; secrets never live there. Base colour modifies a theme rather than sitting beside it -- it controls token values generated at init or preset-apply. A preset is a complete, literal token set in `globals-example.css` format, never a partial override; generation happens only at build time, never at runtime. `admin` adds presets for everyone, a user may add their own ungated."
+    "text": "A user's appearance -- base colour, typeset, menu colour/accent, personal presets, and which preset is selected -- lives in a file-backed store holding one record per user; secrets never live there. Base colour modifies a theme rather than sitting beside it -- it controls token values generated at init or preset-apply. A preset is a complete, literal token set in `globals-example.css` format, never a partial override. Token values are scoped per user at runtime rather than by re-running shadcn's build-time preset mechanism (D26); this entry first said generation happens only at build time, which contradicted D26 and the shipped read path. `admin` adds presets for everyone, a user may add their own ungated."
   },
   "D28": {
     "terms": ["account", "connection"],

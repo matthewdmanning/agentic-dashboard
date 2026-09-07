@@ -118,9 +118,9 @@ A whole colour token set, in the format of `globals-example.css` — the `@theme
 ## Per-user configuration
 
 The preferences that belong to one user rather than to the dashboard: base
-colour, typeset, `menuColor`, `menuAccent`, and personal preset selection.
-Each user has their own `.env` file or files, and per-user configuration is
-read from there.
+colour, typeset, `menuColor`, `menuAccent`, personal presets, and which preset
+is selected. They live in a file-backed appearance store holding one record
+per user, outside dashboard configuration and outside the credential store.
 
 A user owns appearance, expressed in the component library's own semantics — never in CSS. The server owns data and card templates; a user's appearance settings do not reach either.
 
