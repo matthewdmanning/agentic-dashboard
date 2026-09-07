@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 
 import {
+  baseColourSchema,
   cardSchema,
   compositionNodeSchema,
   dashboardSchema,
@@ -255,7 +256,10 @@ export function createDashboardMcpServer(service: DashboardService) {
       inputSchema: z.object({ integrationId: z.string() }),
     },
     async ({ integrationId }) =>
-      apply({ type: "block-integration", integrationId }, "Integration blocked"),
+      apply(
+        { type: "block-integration", integrationId },
+        "Integration blocked",
+      ),
   );
 
   server.registerTool(
@@ -314,6 +318,31 @@ export function createDashboardMcpServer(service: DashboardService) {
       reply(async () => {
         await service.disconnect(integrationId);
         return "Disconnected";
+      }),
+  );
+
+  server.registerTool(
+    "read-appearance",
+    {
+      description:
+        "Read your own appearance preference (base colour) and its derived stylesheet.",
+      inputSchema: z.object({}),
+    },
+    async () =>
+      reply(async () => JSON.stringify(await service.readAppearance())),
+  );
+
+  server.registerTool(
+    "set-base-colour",
+    {
+      description:
+        "Set your own base colour. Recolours every card for you; never affects another user or the project's own component-library configuration.",
+      inputSchema: z.object({ baseColour: baseColourSchema }),
+    },
+    async ({ baseColour }) =>
+      reply(async () => {
+        await service.setAppearance({ baseColour });
+        return "Appearance updated";
       }),
   );
 

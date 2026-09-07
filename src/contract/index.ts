@@ -107,6 +107,35 @@ export const themeSchema = z
 
 export type Theme = z.infer<typeof themeSchema>;
 
+/** shadcn's own base-colour vocabulary (D26) — closed, never an arbitrary colour. */
+export const baseColours = [
+  "neutral",
+  "gray",
+  "zinc",
+  "stone",
+  "slate",
+] as const;
+
+export const baseColourSchema = z.enum(baseColours);
+
+export type BaseColour = z.infer<typeof baseColourSchema>;
+
+/**
+ * A user's own appearance choices (D26, D27, D33-D35): theirs by structure,
+ * never gated by the permission matrix, and closed to shadcn's own
+ * vocabulary rather than arbitrary CSS. Typeset and menu fields join this in
+ * #95.
+ */
+export const userAppearanceSchema = z
+  .object({
+    baseColour: baseColourSchema,
+  })
+  .strict();
+
+export type UserAppearance = z.infer<typeof userAppearanceSchema>;
+
+export const defaultUserAppearance: UserAppearance = { baseColour: "neutral" };
+
 const fieldSpecSchema = z
   .object({
     from: z.array(z.string().min(1)).min(1),

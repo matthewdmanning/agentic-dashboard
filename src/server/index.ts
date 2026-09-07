@@ -5,7 +5,12 @@ import { createServer as createViteServer } from "vite";
 
 import { createFileAuthStore } from "../auth";
 import { provisionLocalUserToken } from "../auth/local-user";
-import { parseDashboardConfiguration, type Mutation } from "../contract";
+import {
+  parseDashboardConfiguration,
+  type Mutation,
+  type UserAppearance,
+} from "../contract";
+import { createFileAppearanceStore } from "./appearance";
 import {
   createFilePersistence,
   createService,
@@ -97,6 +102,7 @@ const failureStatus: Record<ServiceFailureCode, number> = {
   "queries-unavailable": 500,
   "invalid-card-template": 422,
   "integration-blocked": 409,
+  "appearance-unavailable": 500,
 };
 
 function failureResponse(error: unknown): Response {
@@ -175,14 +181,13 @@ export async function handleIntegrationRefreshRequest(
     return new Response("Method not allowed", { status: 405 });
   }
   const credential = credentialFromRequest(request);
-  const [owner, queries, integrations, cardMappers, cards] =
-    await Promise.all([
-      dependencies.service.owner(credential),
-      dependencies.service.read("queries", credential),
-      dependencies.service.read("integrations", credential),
-      dependencies.service.read("cardMappers", credential),
-      dependencies.service.read("cards", credential),
-    ]);
+  const [owner, queries, integrations, cardMappers, cards] = await Promise.all([
+    dependencies.service.owner(credential),
+    dependencies.service.read("queries", credential),
+    dependencies.service.read("integrations", credential),
+    dependencies.service.read("cardMappers", credential),
+    dependencies.service.read("cards", credential),
+  ]);
   const tokenProvider: TokenProvider = async (catalogEntryId) => {
     const connectionCredential = owner
       ? await dependencies.connections.get(owner, catalogEntryId)
@@ -337,6 +342,39 @@ export async function handleIntegrationDisconnectRequest(
   }
 }
 
+/**
+ * The caller's own appearance preference and its derived stylesheet (D26,
+ * D33-D35, #94). Ungated inside `service.readAppearance`/`setAppearance`,
+ * the same reasoning as `blockedIntegrationNotices` — a user's own
+ * appearance is theirs to read and change by structure, not by permission.
+ */
+export async function handleAppearanceRequest(
+  request: Request,
+  service: DashboardService,
+): Promise<Response> {
+  try {
+    if (request.method === "GET") {
+      return Response.json(
+        await service.readAppearance(credentialFromRequest(request)),
+      );
+    }
+
+    if (request.method === "POST") {
+      const body = (await request.json()) as Partial<UserAppearance>;
+      return Response.json(
+        await service.setAppearance(
+          body as UserAppearance,
+          credentialFromRequest(request),
+        ),
+      );
+    }
+
+    return new Response("Method not allowed", { status: 405 });
+  } catch (error) {
+    return failureResponse(error);
+  }
+}
+
 async function startServer() {
   const workspace = resolve(process.env.DASHBOARD_WORKSPACE ?? ".");
   const dashboardPath =
@@ -371,6 +409,17 @@ async function startServer() {
   const cardTemplateClientBuildPath =
     process.env.DASHBOARD_CLIENT_BUILD_PATH ??
     defaultCardTemplateClientBuildPath(workspace);
+  const appearancePath =
+    process.env.DASHBOARD_APPEARANCE_PATH ??
+    join(workspace, ".dashboard", "appearance.json");
+  // The project-owned template every user's effective `components.json` is
+  // generated from (D33, D34, #94) — the workspace copy `init-dashboard`
+  // seeds from the repo's own `components.json`.
+  const componentsTemplatePath =
+    process.env.DASHBOARD_COMPONENTS_PATH ?? join(workspace, "components.json");
+  const userComponentsDir =
+    process.env.DASHBOARD_USER_COMPONENTS_PATH ??
+    join(workspace, ".dashboard", "components");
   // Loopback proves same machine, not same user (D35). The token file does —
   // only the OS account running this process can read it.
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
@@ -393,6 +442,7 @@ async function startServer() {
   const catalog = createFileIntegrationCatalog(catalogPath);
   const queries = createEncryptedQueryStore(queriesPath, secretBox);
   const persistence = createFilePersistence(dashboardPath);
+  const appearance = createFileAppearanceStore(appearancePath);
   const service = createService({
     persistence,
     authStore: createFileAuthStore(authStorePath),
@@ -402,6 +452,11 @@ async function startServer() {
     localUserToken,
     cardTemplateManifestPath,
     cardTemplateClientBuildPath,
+    appearance,
+    appearanceComponents: {
+      dir: userComponentsDir,
+      templatePath: componentsTemplatePath,
+    },
   });
   // Cleanup runs at startup and after every connection change (#89) — no
   // scheduler. This is the startup half; `service` covers the other trigger.
@@ -487,6 +542,31 @@ async function startServer() {
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),
+          }),
+          service,
+        );
+        response.writeHead(result.status, Object.fromEntries(result.headers));
+        response.end(Buffer.from(await result.arrayBuffer()));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "text/plain" });
+        response.end(
+          error instanceof Error ? error.message : "Invalid request",
+        );
+      }
+      return;
+    }
+
+    if (request.url === "/api/appearance") {
+      try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const result = await handleAppearanceRequest(
+          new Request(`http://dashboard${request.url}`, {
+            method: request.method,
+            headers: authorizationHeaders(request),
+            body: chunks.length
+              ? Buffer.concat(chunks).toString("utf8")
+              : undefined,
           }),
           service,
         );

@@ -17,6 +17,7 @@ import {
   type ConnectionStore,
 } from "../server/integrations/connections";
 import { createFileIntegrationCatalog } from "../server/integrations/catalog";
+import { createFileAppearanceStore } from "../server/appearance";
 import { createSecretBox } from "../server/secret-box";
 import {
   createService,
@@ -1202,10 +1203,12 @@ describe("integration blocking (#92)", () => {
       { type: "block-integration", integrationId: "team-calendar" },
     ]);
 
+    await expect(service.connect("team-calendar", "a-secret")).rejects.toThrow(
+      "blocked",
+    );
     await expect(
-      service.connect("team-calendar", "a-secret"),
-    ).rejects.toThrow("blocked");
-    await expect(connections.get(userInfo().username, "team-calendar")).resolves.toBeUndefined();
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBeUndefined();
     // Nothing about the query the caller already had was touched.
     await expect(service.read("queries")).resolves.toEqual([
       expect.objectContaining({ integration: "team-calendar" }),
@@ -1834,6 +1837,158 @@ describe("card mapper store", () => {
 
     await expect(service.read("cardMappers", "alice-token")).resolves.toEqual(
       [],
+    );
+  });
+});
+
+describe("user appearance (#94)", () => {
+  function twoUserAuthStore() {
+    return {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : undefined,
+    };
+  }
+
+  test("defaults to neutral with a non-empty stylesheet when nothing was ever set", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    const appearance = await service.readAppearance();
+
+    expect(appearance.baseColour).toBe("neutral");
+    expect(appearance.css).toContain("--background");
+  });
+
+  test("setting a base colour persists it and changes the derived stylesheet", async () => {
+    const appearance = createFileAppearanceStore(
+      join(await mkdtemp(join(tmpdir(), "appearance-")), "appearance.json"),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance,
+    });
+
+    const result = await service.setAppearance({ baseColour: "slate" });
+
+    expect(result.baseColour).toBe("slate");
+    await expect(service.readAppearance()).resolves.toMatchObject({
+      baseColour: "slate",
+    });
+  });
+
+  test("two users hold independent base colours, each seeing only their own (D26)", async () => {
+    const appearance = createFileAppearanceStore(
+      join(await mkdtemp(join(tmpdir(), "appearance-")), "appearance.json"),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance,
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.setAppearance({ baseColour: "slate" }, "alice-token");
+    await service.setAppearance({ baseColour: "stone" }, "bob-token");
+
+    await expect(service.readAppearance("alice-token")).resolves.toMatchObject({
+      baseColour: "slate",
+    });
+    await expect(service.readAppearance("bob-token")).resolves.toMatchObject({
+      baseColour: "stone",
+    });
+    const [aliceCss, bobCss] = await Promise.all([
+      service.readAppearance("alice-token").then((a) => a.css),
+      service.readAppearance("bob-token").then((a) => a.css),
+    ]);
+    expect(aliceCss).not.toBe(bobCss);
+  });
+
+  test("a caller with no permission bundle at all can still read and set their own appearance (D35)", async () => {
+    const appearance = createFileAppearanceStore(
+      join(await mkdtemp(join(tmpdir(), "appearance-")), "appearance.json"),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance,
+      localUser: withLocalPermissions({
+        data: "noAccess",
+        cards: "noAccess",
+        presentation: "noAccess",
+        integrations: "noAccess",
+        roles: "noAccess",
+      }),
+    });
+
+    await expect(
+      service.setAppearance({ baseColour: "gray" }),
+    ).resolves.toMatchObject({ baseColour: "gray" });
+  });
+
+  test("rejects a base colour outside shadcn's closed vocabulary", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await expect(
+      service.setAppearance({ baseColour: "purple" } as never),
+    ).rejects.toThrow();
+  });
+
+  test("fails naming the service's own code when no appearance store is configured", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await expect(
+      service.setAppearance({ baseColour: "gray" }),
+    ).rejects.toMatchObject({ code: "appearance-unavailable" });
+  });
+
+  test("regenerates the caller's components.json from the project template as a whole, never a project-owned field (D33, D34)", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "appearance-components-"));
+    const templatePath = join(workspace, "components.json");
+    const componentsDir = join(workspace, "components");
+    await writeFile(
+      templatePath,
+      JSON.stringify({
+        style: "new-york",
+        rsc: false,
+        tsx: true,
+        tailwind: {
+          config: "",
+          css: "src/styles.css",
+          cssVariables: true,
+          prefix: "",
+          baseColor: "neutral",
+        },
+        iconLibrary: "lucide",
+        rtl: false,
+        aliases: { components: "@/components", utils: "@/lib/utils" },
+        menuColor: "default",
+        menuAccent: "subtle",
+      }),
+    );
+    const appearance = createFileAppearanceStore(
+      join(workspace, "appearance.json"),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance,
+      appearanceComponents: { dir: componentsDir, templatePath },
+    });
+
+    await service.setAppearance({ baseColour: "zinc" });
+
+    const generated = JSON.parse(
+      await readFile(
+        join(componentsDir, `${userInfo().username}.json`),
+        "utf8",
+      ),
+    ) as Record<string, unknown>;
+    expect(generated).not.toHaveProperty("menuColor");
+    expect(generated).not.toHaveProperty("menuAccent");
+    expect(generated.style).toBe("new-york");
+    expect(generated.iconLibrary).toBe("lucide");
+    expect((generated.tailwind as { baseColor: string }).baseColor).toBe(
+      "zinc",
     );
   });
 });

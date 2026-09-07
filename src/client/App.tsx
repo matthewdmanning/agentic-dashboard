@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 
-import type { Mutation, ReadableDashboard, Role } from "../contract";
+import type {
+  Mutation,
+  ReadableDashboard,
+  Role,
+  UserAppearance,
+} from "../contract";
+import {
+  loadAppearance,
+  setAppearance,
+  type AppearanceView,
+} from "./appearance-client";
 import {
   applyDashboardMutations,
   loadCallerRole,
@@ -64,12 +74,19 @@ export function App() {
   const [unavailableQueryNotices, setUnavailableQueryNotices] = useState<
     string[]
   >([]);
+  const [appearance, setAppearanceState] = useState<AppearanceView>({
+    baseColour: "neutral",
+    css: "",
+  });
   const [pendingCount, setPendingCount] = useState(
     pendingMutationCount(localStorage),
   );
 
   async function sync(): Promise<void> {
-    const { dropped } = await replayQueue(localStorage, applyDashboardMutations);
+    const { dropped } = await replayQueue(
+      localStorage,
+      applyDashboardMutations,
+    );
     setPendingCount(pendingMutationCount(localStorage));
     if (dropped.length > 0) {
       setRefreshError(dropped.map((failure) => failure.message).join(", "));
@@ -111,6 +128,9 @@ export function App() {
     void loadUnavailableQueryNotices()
       .then(setUnavailableQueryNotices)
       .catch(() => undefined);
+    void loadAppearance()
+      .then(setAppearanceState)
+      .catch(() => undefined);
 
     const handleOnline = () => void sync().then(() => setOffline(false));
     window.addEventListener("online", handleOnline);
@@ -135,15 +155,20 @@ export function App() {
     }
   }
 
+  async function saveAppearance(update: UserAppearance): Promise<void> {
+    setAppearanceState(await setAppearance(update));
+  }
+
   if (error) return <p role="alert">{error}</p>;
   if (!dashboard) return <p>Loading dashboard…</p>;
 
   return (
     <>
+      {/* Server-generated from a closed base-colour vocabulary (D26) — never arbitrary CSS. */}
+      <style id="appearance-tokens">{appearance.css}</style>
       {offline ? (
         <p role="status">
-          Offline — {pendingCount} change{pendingCount === 1 ? "" : "s"}{" "}
-          pending
+          Offline — {pendingCount} change{pendingCount === 1 ? "" : "s"} pending
         </p>
       ) : null}
       {renderDashboard(dashboard)}
@@ -187,8 +212,10 @@ export function App() {
           connectableTypes={connectableTypes}
           blockedIntegrationNotices={blockedIntegrationNotices}
           unavailableQueryNotices={unavailableQueryNotices}
+          appearance={appearance}
           onSave={saveMutations}
           onConnect={connectIntegration}
+          onSetAppearance={saveAppearance}
         />
       </details>
     </>

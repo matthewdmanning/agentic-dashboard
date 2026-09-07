@@ -134,6 +134,8 @@ describe("dashboard MCP server", () => {
         "set-integration-retention-policy",
         "connect-integration",
         "disconnect-integration",
+        "read-appearance",
+        "set-base-colour",
       ]),
     );
   });

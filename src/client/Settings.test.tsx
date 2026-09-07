@@ -10,6 +10,10 @@ function render(
   callerRole?: Parameters<typeof Settings>[0]["callerRole"],
   blockedIntegrationNotices: string[] = [],
   unavailableQueryNotices: string[] = [],
+  appearance: Parameters<typeof Settings>[0]["appearance"] = {
+    baseColour: "neutral",
+    css: "",
+  },
 ) {
   return renderToStaticMarkup(
     createElement(Settings, {
@@ -18,8 +22,10 @@ function render(
       connectableTypes: ["example-service"],
       blockedIntegrationNotices,
       unavailableQueryNotices,
+      appearance,
       onSave: async () => undefined,
       onConnect: async () => undefined,
+      onSetAppearance: async () => undefined,
     }),
   );
 }
@@ -170,5 +176,25 @@ describe("Settings contract", () => {
     );
 
     expect(integrations).not.toContain("no longer exists");
+  });
+
+  test("shows the caller's own base colour, ungated by any permission (#94)", () => {
+    const appearance = fieldset(
+      render({}, undefined, [], [], { baseColour: "slate", css: "" }),
+      "Appearance",
+    );
+
+    expect(appearance).toContain('value="slate" selected');
+    expect(appearance).toContain(">neutral<");
+    expect(appearance).toContain(">gray<");
+    expect(appearance).toContain(">zinc<");
+    expect(appearance).toContain(">stone<");
+    expect(appearance).toContain(">slate<");
+  });
+
+  test("renders the Appearance fieldset even with no permission bundle at all", () => {
+    const html = render({});
+
+    expect(html).toContain("Appearance");
   });
 });

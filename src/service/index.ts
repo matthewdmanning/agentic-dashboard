@@ -20,6 +20,11 @@ import {
   type StoredQuery,
   type UserQueryStore,
 } from "./queries";
+import {
+  appearanceCss,
+  writeUserComponentsConfig,
+  type AppearanceStore,
+} from "../server/appearance";
 import { generateComponentSource } from "../card-templates/codegen";
 import {
   prepareCardTemplatePromotion,
@@ -33,12 +38,14 @@ import {
 } from "../card-templates/active-manifest";
 import {
   defaultDashboardConfiguration,
+  defaultUserAppearance,
   localUser,
   mutationRequirements,
   unauthenticatedUser,
   mutationsSchema,
   parseDashboardConfiguration,
   roles,
+  userAppearanceSchema,
   type Card,
   type CardMapper,
   type Dashboard,
@@ -49,6 +56,7 @@ import {
   type PermissionLevel,
   type Role,
   type Theme,
+  type UserAppearance,
 } from "../contract";
 
 /**
@@ -67,7 +75,8 @@ export type ServiceFailureCode =
   | "connections-unavailable"
   | "queries-unavailable"
   | "invalid-card-template"
-  | "integration-blocked";
+  | "integration-blocked"
+  | "appearance-unavailable";
 
 export class ServiceFailure extends Error {
   constructor(
@@ -149,6 +158,19 @@ interface Dependencies {
   cardTemplateManifestPath?: string;
   /** Pairs with `cardTemplateManifestPath` — the promoted client build. */
   cardTemplateClientBuildPath?: string;
+  /** Where each user's own appearance preference lives (D33-D35, #94). */
+  appearance?: AppearanceStore;
+  /**
+   * Where this build regenerates a user's effective `components.json`
+   * whenever their appearance changes (D34, #94). Omitted in tests that
+   * don't check the generated file.
+   */
+  appearanceComponents?: { dir: string; templatePath: string };
+}
+
+/** A user's own appearance preference plus its derived stylesheet (D26, #94) — what `readAppearance`/`setAppearance` hand back. */
+export interface AppearanceView extends UserAppearance {
+  css: string;
 }
 
 export interface AuthenticatedCaller {
@@ -232,6 +254,23 @@ export interface DashboardService {
    * `blockedIntegrationNotices`.
    */
   unavailableQueryIntegrations(credential?: string): Promise<string[]>;
+  /**
+   * The caller's own appearance preference and its derived semantic-token
+   * stylesheet (D26, D33-D35, #94) — ungated, the same as `role`: what a
+   * user sees is theirs by structure. An unresolved caller or an unset
+   * preference both fall back to the shared default rather than failing.
+   */
+  readAppearance(credential?: string): Promise<AppearanceView>;
+  /**
+   * Replaces the caller's own appearance preference as a whole and
+   * regenerates their effective `components.json` from the project template
+   * (D33, D34) — never a patch, so no project-owned or stale field can
+   * survive. Ungated for the same reason `readAppearance` is.
+   */
+  setAppearance(
+    appearance: UserAppearance,
+    credential?: string,
+  ): Promise<AppearanceView>;
 }
 
 export function createService(dependencies: Dependencies): DashboardService {
@@ -290,6 +329,10 @@ export function createService(dependencies: Dependencies): DashboardService {
       enqueue(() => blockedIntegrationNotices(dependencies, credential)),
     unavailableQueryIntegrations: (credential) =>
       enqueue(() => unavailableQueryIntegrations(dependencies, credential)),
+    readAppearance: (credential) =>
+      enqueue(() => readCallerAppearance(dependencies, credential)),
+    setAppearance: (appearance, credential) =>
+      enqueue(() => setCallerAppearance(dependencies, appearance, credential)),
   };
 }
 
@@ -827,6 +870,59 @@ async function unavailableQueryIntegrations(
         .filter((integrationId) => !knownIds.has(integrationId)),
     ),
   ];
+}
+
+/**
+ * The caller's own appearance preference, defaulting when unresolved or
+ * unset (D33-D35, #94) rather than failing — the same posture as `read`
+ * handing back the caller's own queries.
+ */
+async function readCallerAppearance(
+  dependencies: Dependencies,
+  credential: string | undefined,
+): Promise<AppearanceView> {
+  const caller = await resolveCaller(dependencies, credential);
+  const appearance =
+    caller.user && dependencies.appearance
+      ? ((await dependencies.appearance.get(caller.user)) ??
+        defaultUserAppearance)
+      : defaultUserAppearance;
+  return { ...appearance, css: appearanceCss(appearance.baseColour) };
+}
+
+/**
+ * Replaces the caller's own appearance preference as a whole and, when this
+ * build regenerates per-user `components.json` files, rewrites theirs from
+ * the project template (D34, #94). Ungated like `connectIntegration` (D35):
+ * the caller resolved here is always who the preference belongs to.
+ */
+async function setCallerAppearance(
+  dependencies: Dependencies,
+  update: UserAppearance,
+  credential: string | undefined,
+): Promise<AppearanceView> {
+  const appearance = userAppearanceSchema.parse(update);
+  const user = await requireOwner(
+    dependencies,
+    credential,
+    "an appearance preference",
+  );
+  if (!dependencies.appearance) {
+    throw new ServiceFailure(
+      "appearance-unavailable",
+      "Appearance storage is not configured",
+    );
+  }
+  await dependencies.appearance.set(user, appearance);
+  if (dependencies.appearanceComponents) {
+    await writeUserComponentsConfig(
+      dependencies.appearanceComponents.dir,
+      dependencies.appearanceComponents.templatePath,
+      user,
+      appearance,
+    );
+  }
+  return { ...appearance, css: appearanceCss(appearance.baseColour) };
 }
 
 function requireQueryStore(dependencies: Dependencies): UserQueryStore {

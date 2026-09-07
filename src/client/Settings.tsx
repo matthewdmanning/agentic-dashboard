@@ -1,6 +1,15 @@
 import { useState, type FormEvent } from "react";
 
-import type { Mutation, ReadableDashboard, Role, Theme } from "../contract";
+import {
+  baseColours,
+  type BaseColour,
+  type Mutation,
+  type ReadableDashboard,
+  type Role,
+  type Theme,
+  type UserAppearance,
+} from "../contract";
+import type { AppearanceView } from "./appearance-client";
 import {
   settingsMutations,
   type DashboardSettings,
@@ -12,8 +21,10 @@ export function Settings({
   connectableTypes,
   blockedIntegrationNotices,
   unavailableQueryNotices,
+  appearance,
   onSave,
   onConnect,
+  onSetAppearance,
 }: {
   dashboard: ReadableDashboard;
   /** The caller's own role, so a user can see what this session may do. */
@@ -24,9 +35,13 @@ export function Settings({
   blockedIntegrationNotices: string[];
   /** Integrations the caller's own queries name that no longer exist (D40, #93) — a force-removed dependent integration never cascade-deletes a query. */
   unavailableQueryNotices: string[];
+  /** The caller's own appearance preference (D26, D33-D35, #94) — theirs by structure, ungated. */
+  appearance: AppearanceView;
   onSave: (mutations: readonly Mutation[]) => Promise<void>;
   /** Hands a connection's secret to the server. Not a mutation — see `contract`'s ban on a credential-shaped settings key. */
   onConnect: (integrationId: string, credential: string) => Promise<void>;
+  /** Replaces the caller's own appearance preference as a whole (D34). Not a mutation — applies immediately, like `onConnect`. */
+  onSetAppearance: (update: UserAppearance) => Promise<void>;
 }) {
   const initial: DashboardSettings = {
     dashboard: dashboard.dashboard,
@@ -57,9 +72,10 @@ export function Settings({
 
   function connect() {
     setError(undefined);
-    void (connection.credential === ""
-      ? Promise.resolve()
-      : onConnect(connection.id, connection.credential)
+    void (
+      connection.credential === ""
+        ? Promise.resolve()
+        : onConnect(connection.id, connection.credential)
     )
       .then(() => {
         setSettings({
@@ -94,6 +110,34 @@ export function Settings({
   return (
     <form aria-label="Settings" onSubmit={submit}>
       <h2>Settings</h2>
+
+      {/* A user's own appearance is theirs by structure (D33-D35) — no permission gates this, unlike every fieldset below. */}
+      <fieldset>
+        <legend>Appearance</legend>
+        <label>
+          Base colour
+          <select
+            value={appearance.baseColour}
+            onChange={(event) =>
+              void onSetAppearance({
+                baseColour: event.currentTarget.value as BaseColour,
+              }).catch((reason: unknown) => {
+                setError(
+                  reason instanceof Error
+                    ? reason.message
+                    : "Could not save appearance",
+                );
+              })
+            }
+          >
+            {baseColours.map((colour) => (
+              <option key={colour} value={colour}>
+                {colour}
+              </option>
+            ))}
+          </select>
+        </label>
+      </fieldset>
 
       {settings.dashboard && settings.themes ? (
         <fieldset>
@@ -192,16 +236,15 @@ export function Settings({
           {blockedIntegrationNotices.length > 0 ? (
             <p role="alert">
               Blocked by an administrator:{" "}
-              {blockedIntegrationNotices.join(", ")}. Your connection and
-              data remain stored; reconnecting is not needed once it is
-              unblocked.
+              {blockedIntegrationNotices.join(", ")}. Your connection and data
+              remain stored; reconnecting is not needed once it is unblocked.
             </p>
           ) : null}
           {unavailableQueryNotices.length > 0 ? (
             <p role="alert">
-              Some of your saved queries reference an integration that no
-              longer exists: {unavailableQueryNotices.join(", ")}. They
-              remain stored but will not refresh.
+              Some of your saved queries reference an integration that no longer
+              exists: {unavailableQueryNotices.join(", ")}. They remain stored
+              but will not refresh.
             </p>
           ) : null}
           {settings.integrations.map((integration) => (

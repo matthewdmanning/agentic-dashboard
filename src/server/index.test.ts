@@ -1,5 +1,7 @@
 import { describe, expect, test, vi } from "vitest";
-import { userInfo } from "node:os";
+import { userInfo, tmpdir } from "node:os";
+import { mkdtemp } from "node:fs/promises";
+import { join } from "node:path";
 
 import { defaultDashboardConfiguration, roles, type Role } from "../contract";
 import {
@@ -10,12 +12,14 @@ import {
 import type { StoredQuery, UserQueryStore } from "../service/queries";
 import type { ConnectionStore } from "./integrations/connections";
 import {
+  handleAppearanceRequest,
   handleDashboardConfigurationRequest,
   handleIntegrationConnectRequest,
   handleIntegrationDisconnectRequest,
   handleIntegrationRefreshRequest,
   handleIntegrationTypesRequest,
 } from "./index";
+import { createFileAppearanceStore, type AppearanceStore } from "./appearance";
 import {
   useTestCardTemplates,
   withTestCard,
@@ -86,9 +90,9 @@ function createMemoryUserQueryStore(): UserQueryStore {
         entries.some((entry) => entry.cardMapper === mapperName),
       ),
     countReferencingIntegration: async (integrationId) =>
-      [...values.values()].flat().filter(
-        (entry) => entry.integration === integrationId,
-      ).length,
+      [...values.values()]
+        .flat()
+        .filter((entry) => entry.integration === integrationId).length,
   };
 }
 
@@ -99,6 +103,7 @@ function createTestService(
     connectableTypes?: string[];
     localUser?: Role;
     queries?: UserQueryStore;
+    appearance?: AppearanceStore;
   } = {},
 ): DashboardService {
   return createService({
@@ -763,6 +768,82 @@ describe("integration connect endpoint", () => {
       createTestService(defaultDashboardConfiguration, {
         connections: createMemoryConnectionStore(),
       }),
+    );
+
+    expect(response.status).toBe(400);
+  });
+});
+
+describe("appearance endpoint (#94)", () => {
+  async function tempAppearanceStore(): Promise<AppearanceStore> {
+    return createFileAppearanceStore(
+      join(await mkdtemp(join(tmpdir(), "appearance-")), "appearance.json"),
+    );
+  }
+
+  test("GET returns the caller's own appearance and its derived stylesheet", async () => {
+    const service = createTestService(defaultDashboardConfiguration, {
+      appearance: await tempAppearanceStore(),
+    });
+
+    const response = await handleAppearanceRequest(
+      new Request("http://dashboard/api/appearance"),
+      service,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { baseColour: string; css: string };
+    expect(body.baseColour).toBe("neutral");
+    expect(body.css).toContain("--background");
+  });
+
+  test("POST replaces the caller's base colour as a whole, ungated by any permission (D35)", async () => {
+    const service = createTestService(defaultDashboardConfiguration, {
+      appearance: await tempAppearanceStore(),
+      localUser: {
+        name: "localUser",
+        permissions: {
+          data: "noAccess",
+          cards: "noAccess",
+          presentation: "noAccess",
+          integrations: "noAccess",
+          roles: "noAccess",
+        },
+      },
+    });
+
+    const response = await handleAppearanceRequest(
+      new Request("http://dashboard/api/appearance", {
+        method: "POST",
+        body: JSON.stringify({ baseColour: "slate" }),
+      }),
+      service,
+    );
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { baseColour: string };
+    expect(body.baseColour).toBe("slate");
+
+    const followUp = await handleAppearanceRequest(
+      new Request("http://dashboard/api/appearance"),
+      service,
+    );
+    await expect(followUp.json()).resolves.toMatchObject({
+      baseColour: "slate",
+    });
+  });
+
+  test("rejects a base colour outside shadcn's closed vocabulary", async () => {
+    const service = createTestService(defaultDashboardConfiguration, {
+      appearance: await tempAppearanceStore(),
+    });
+
+    const response = await handleAppearanceRequest(
+      new Request("http://dashboard/api/appearance", {
+        method: "POST",
+        body: JSON.stringify({ baseColour: "purple" }),
+      }),
+      service,
     );
 
     expect(response.status).toBe(400);
