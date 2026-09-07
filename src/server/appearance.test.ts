@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { encodeUserPathSegment } from "../auth";
-import { defaultUserAppearance, type UserAppearance } from "../contract";
+import {
+  baseColours,
+  defaultUserAppearance,
+  presetTokens,
+  type UserAppearance,
+} from "../contract";
 import {
   appearanceCss,
   createFileAppearanceStore,
@@ -163,7 +168,65 @@ describe("writeUserComponentsConfig (D34, #94)", () => {
   });
 });
 
+/** The custom properties one selector's first block declares, as `{ token: value }`. */
+function declarationsIn(css: string, selector: string): Record<string, string> {
+  const start = css.indexOf(`${selector} {`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  const body = css.slice(start, css.indexOf("}", start));
+  return Object.fromEntries(
+    [...body.matchAll(/--([\w-]+):\s*([^;]+);/g)].map((match) => [
+      match[1],
+      match[2].replace(/\s+/g, " ").trim(),
+    ]),
+  );
+}
+
 describe("appearanceCss (D26, #95)", () => {
+  test("the neutral base colour reproduces styles.css token for token, light and dark", async () => {
+    // `styles.css` is the project's own neutral stylesheet, so generating
+    // `neutral` must land on exactly it. This is what pins the palette and the
+    // token-to-step mapping to something real instead of eyeballed values, and
+    // what catches the two drifting apart later.
+    const stylesheet = await readFile(
+      new URL("../styles.css", import.meta.url),
+      "utf8",
+    );
+    const generated = appearanceCss(appearance({ baseColour: "neutral" }));
+
+    const expectedLight = declarationsIn(stylesheet, ":root");
+    const expectedDark = declarationsIn(stylesheet, ".dark");
+    const actualLight = declarationsIn(generated, ":root");
+    const actualDark = declarationsIn(generated, ".dark");
+
+    for (const token of presetTokens) {
+      expect({ token, value: actualLight[token] }).toEqual({
+        token,
+        value: expectedLight[token],
+      });
+      expect({ token, value: actualDark[token] }).toEqual({
+        token,
+        value: expectedDark[token],
+      });
+    }
+  });
+
+  test("every base colour covers every token in both modes", () => {
+    for (const baseColour of baseColours) {
+      const css = appearanceCss(appearance({ baseColour }));
+      const light = declarationsIn(css, ":root");
+      const dark = declarationsIn(css, ".dark");
+      for (const token of presetTokens) {
+        expect(light[token]).toBeTruthy();
+        expect(dark[token]).toBeTruthy();
+      }
+    }
+  });
+
+  test("the dark block follows the light one, so it wins wherever the class is active", () => {
+    const css = appearanceCss(appearance({ baseColour: "slate" }));
+    expect(css.indexOf(".dark {")).toBeGreaterThan(css.indexOf(":root {"));
+  });
+
   test("every base colour produces a distinct, non-empty stylesheet", () => {
     const colours = ["neutral", "gray", "zinc", "stone", "slate"] as const;
     const stylesheets = colours.map((baseColour) =>
@@ -196,9 +259,15 @@ describe("appearanceCss (D26, #95)", () => {
     expect(css).toContain("calc(1rem * 1.25)");
     expect(css).toContain("line-height: 1.625");
     expect(css).toContain("text-wrap: balance");
-    expect(css).toContain("ui-serif");
-    expect(css).toContain("main :is(h1, h2, h3, h4, h5, h6)");
-    expect(css).toContain("ui-monospace");
+
+    // Fonts arrive as the custom properties `styles.css` maps its `@theme
+    // inline` font tokens onto, so a component carrying a font utility of its
+    // own (`CardTitle`'s `font-heading`) follows the viewing user too — a
+    // `font-family` rule on `main` only ever reached inherited text.
+    expect(css).toContain("--body-font: ui-serif");
+    expect(css).toContain("--heading-font: ui-monospace");
+    expect(css).toContain("--monospace-font: ui-sans-serif");
+    expect(css).not.toContain("main :is(h1");
   });
 });
 

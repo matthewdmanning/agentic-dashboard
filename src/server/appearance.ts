@@ -168,80 +168,192 @@ export async function writeUserComponentsConfig(
 // ---- semantic colour tokens (D26) ----
 
 /**
- * One representative semantic-token block per shadcn base colour. Real,
- * distinct values per colour — not a claim of matching the shadcn CLI's own
- * generator token-for-token, which D26 already rules out re-running per user.
- * Token names match the CSS custom properties `styles.css` already declares,
- * so a card template that only ever names a semantic token recolours under
- * whichever block is in effect without any change of its own.
+ * The Tailwind colour scales shadcn's base colours name (D26), at the steps
+ * its token sets draw from — copied from the installed `tailwindcss`
+ * package's own `theme.css` and normalised to the `oklch(L C H)` form
+ * `styles.css` already uses, rather than eyeballed. This is the palette, not
+ * the token set: `lightTokens`/`darkTokens` below are what turn a scale into
+ * the semantic tokens a card template actually names.
  */
-const baseColourTokenValues: Record<BaseColour, Record<string, string>> = {
+type PaletteStep =
+  | 50
+  | 100
+  | 200
+  | 300
+  | 400
+  | 500
+  | 600
+  | 700
+  | 800
+  | 900
+  | 950;
+
+const basePalette: Record<BaseColour, Record<PaletteStep, string>> = {
   neutral: {
-    background: "oklch(1 0 0)",
-    foreground: "oklch(0.145 0 0)",
-    card: "oklch(1 0 0)",
-    primary: "oklch(0.205 0 0)",
-    "primary-foreground": "oklch(0.985 0 0)",
-    secondary: "oklch(0.97 0 0)",
-    muted: "oklch(0.97 0 0)",
-    "muted-foreground": "oklch(0.556 0 0)",
-    accent: "oklch(0.97 0 0)",
-    border: "oklch(0.922 0 0)",
-    ring: "oklch(0.708 0 0)",
+    50: "oklch(0.985 0 0)",
+    100: "oklch(0.97 0 0)",
+    200: "oklch(0.922 0 0)",
+    300: "oklch(0.87 0 0)",
+    400: "oklch(0.708 0 0)",
+    500: "oklch(0.556 0 0)",
+    600: "oklch(0.439 0 0)",
+    700: "oklch(0.371 0 0)",
+    800: "oklch(0.269 0 0)",
+    900: "oklch(0.205 0 0)",
+    950: "oklch(0.145 0 0)",
   },
   gray: {
-    background: "oklch(1 0 0)",
-    foreground: "oklch(0.15 0.02 265)",
-    card: "oklch(1 0 0)",
-    primary: "oklch(0.21 0.03 265)",
-    "primary-foreground": "oklch(0.985 0 0)",
-    secondary: "oklch(0.96 0.01 265)",
-    muted: "oklch(0.96 0.01 265)",
-    "muted-foreground": "oklch(0.55 0.02 265)",
-    accent: "oklch(0.96 0.01 265)",
-    border: "oklch(0.92 0.01 265)",
-    ring: "oklch(0.71 0.02 265)",
+    50: "oklch(0.985 0.002 247.839)",
+    100: "oklch(0.967 0.003 264.542)",
+    200: "oklch(0.928 0.006 264.531)",
+    300: "oklch(0.872 0.01 258.338)",
+    400: "oklch(0.707 0.022 261.325)",
+    500: "oklch(0.551 0.027 264.364)",
+    600: "oklch(0.446 0.03 256.802)",
+    700: "oklch(0.373 0.034 259.733)",
+    800: "oklch(0.278 0.033 256.848)",
+    900: "oklch(0.21 0.034 264.665)",
+    950: "oklch(0.13 0.028 261.692)",
   },
   zinc: {
-    background: "oklch(1 0 0)",
-    foreground: "oklch(0.14 0.005 285)",
-    card: "oklch(1 0 0)",
-    primary: "oklch(0.21 0.006 285)",
-    "primary-foreground": "oklch(0.985 0 0)",
-    secondary: "oklch(0.967 0.001 286)",
-    muted: "oklch(0.967 0.001 286)",
-    "muted-foreground": "oklch(0.552 0.014 285)",
-    accent: "oklch(0.967 0.001 286)",
-    border: "oklch(0.92 0.004 286)",
-    ring: "oklch(0.705 0.015 286)",
+    50: "oklch(0.985 0 0)",
+    100: "oklch(0.967 0.001 286.375)",
+    200: "oklch(0.92 0.004 286.32)",
+    300: "oklch(0.871 0.006 286.286)",
+    400: "oklch(0.705 0.015 286.067)",
+    500: "oklch(0.552 0.016 285.938)",
+    600: "oklch(0.442 0.017 285.786)",
+    700: "oklch(0.37 0.013 285.805)",
+    800: "oklch(0.274 0.006 286.033)",
+    900: "oklch(0.21 0.006 285.885)",
+    950: "oklch(0.141 0.005 285.823)",
   },
   stone: {
-    background: "oklch(1 0 0)",
-    foreground: "oklch(0.147 0.004 49)",
-    card: "oklch(1 0 0)",
-    primary: "oklch(0.216 0.006 56)",
-    "primary-foreground": "oklch(0.985 0.001 106)",
-    secondary: "oklch(0.97 0.001 106)",
-    muted: "oklch(0.97 0.001 106)",
-    "muted-foreground": "oklch(0.553 0.013 58)",
-    accent: "oklch(0.97 0.001 106)",
-    border: "oklch(0.923 0.003 48)",
-    ring: "oklch(0.709 0.01 56)",
+    50: "oklch(0.985 0.001 106.423)",
+    100: "oklch(0.97 0.001 106.424)",
+    200: "oklch(0.923 0.003 48.717)",
+    300: "oklch(0.869 0.005 56.366)",
+    400: "oklch(0.709 0.01 56.259)",
+    500: "oklch(0.553 0.013 58.071)",
+    600: "oklch(0.444 0.011 73.639)",
+    700: "oklch(0.374 0.01 67.558)",
+    800: "oklch(0.268 0.007 34.298)",
+    900: "oklch(0.216 0.006 56.043)",
+    950: "oklch(0.147 0.004 49.25)",
   },
   slate: {
-    background: "oklch(1 0 0)",
-    foreground: "oklch(0.129 0.042 264)",
-    card: "oklch(1 0 0)",
-    primary: "oklch(0.208 0.042 265)",
-    "primary-foreground": "oklch(0.984 0.003 247)",
-    secondary: "oklch(0.968 0.007 247)",
-    muted: "oklch(0.968 0.007 247)",
-    "muted-foreground": "oklch(0.554 0.046 257)",
-    accent: "oklch(0.968 0.007 247)",
-    border: "oklch(0.929 0.013 255)",
-    ring: "oklch(0.704 0.04 256)",
+    50: "oklch(0.984 0.003 247.858)",
+    100: "oklch(0.968 0.007 247.896)",
+    200: "oklch(0.929 0.013 255.508)",
+    300: "oklch(0.869 0.022 252.894)",
+    400: "oklch(0.704 0.04 256.788)",
+    500: "oklch(0.554 0.046 257.417)",
+    600: "oklch(0.446 0.043 257.281)",
+    700: "oklch(0.372 0.044 257.287)",
+    800: "oklch(0.279 0.041 260.031)",
+    900: "oklch(0.208 0.042 265.755)",
+    950: "oklch(0.129 0.042 264.695)",
   },
 };
+
+/** Pure white, which shadcn uses directly for light surfaces rather than a scale step. */
+const white = "oklch(1 0 0)";
+
+/**
+ * The tokens that do not follow the selected scale. `destructive` is always
+ * red — a base colour changes the dashboard's neutrals, never the meaning of
+ * a destructive action — and dark `sidebar-primary` keeps the stock shadcn
+ * accent this project's `styles.css` already carries.
+ */
+const destructiveLight = "oklch(0.577 0.245 27.325)";
+const destructiveDark = "oklch(0.704 0.191 22.216)";
+const sidebarPrimaryDark = "oklch(0.488 0.243 264.376)";
+
+/** Translucent white, so a dark border reads against whatever sits behind it rather than one assumed surface. */
+const darkBorder = "oklch(1 0 0 / 10%)";
+const darkInput = "oklch(1 0 0 / 15%)";
+
+/**
+ * One base colour's complete light token set (D26): every key `presetTokens`
+ * names, so a base colour and a preset produce the same shape and the same
+ * coverage. The step each token maps to is shadcn's own — verified by
+ * generating `neutral` and checking it reproduces the `:root` block
+ * `styles.css` ships, token for token.
+ */
+function lightTokens(scale: Record<PaletteStep, string>): TokenBlock {
+  return {
+    background: white,
+    foreground: scale[950],
+    card: white,
+    "card-foreground": scale[950],
+    popover: white,
+    "popover-foreground": scale[950],
+    primary: scale[900],
+    "primary-foreground": scale[50],
+    secondary: scale[100],
+    "secondary-foreground": scale[900],
+    muted: scale[100],
+    "muted-foreground": scale[500],
+    accent: scale[100],
+    "accent-foreground": scale[900],
+    destructive: destructiveLight,
+    border: scale[200],
+    input: scale[200],
+    ring: scale[400],
+    // Monochrome charts, drawn from the same scale — this project's own
+    // choice in `styles.css`, not shadcn's stock multicolour set.
+    "chart-1": scale[300],
+    "chart-2": scale[500],
+    "chart-3": scale[600],
+    "chart-4": scale[700],
+    "chart-5": scale[800],
+    sidebar: scale[50],
+    "sidebar-foreground": scale[950],
+    "sidebar-primary": scale[900],
+    "sidebar-primary-foreground": scale[50],
+    "sidebar-accent": scale[100],
+    "sidebar-accent-foreground": scale[900],
+    "sidebar-border": scale[200],
+    "sidebar-ring": scale[400],
+  };
+}
+
+/** The same base colour's complete dark token set (D26) — verified the same way against `styles.css`'s `.dark` block. */
+function darkTokens(scale: Record<PaletteStep, string>): TokenBlock {
+  return {
+    background: scale[950],
+    foreground: scale[50],
+    card: scale[900],
+    "card-foreground": scale[50],
+    popover: scale[900],
+    "popover-foreground": scale[50],
+    primary: scale[200],
+    "primary-foreground": scale[900],
+    secondary: scale[800],
+    "secondary-foreground": scale[50],
+    muted: scale[800],
+    "muted-foreground": scale[400],
+    accent: scale[800],
+    "accent-foreground": scale[50],
+    destructive: destructiveDark,
+    border: darkBorder,
+    input: darkInput,
+    ring: scale[500],
+    "chart-1": scale[300],
+    "chart-2": scale[500],
+    "chart-3": scale[600],
+    "chart-4": scale[700],
+    "chart-5": scale[800],
+    sidebar: scale[900],
+    "sidebar-foreground": scale[50],
+    "sidebar-primary": sidebarPrimaryDark,
+    "sidebar-primary-foreground": scale[50],
+    "sidebar-accent": scale[800],
+    "sidebar-accent-foreground": scale[50],
+    "sidebar-border": darkBorder,
+    "sidebar-ring": scale[500],
+  };
+}
 
 /** Tailwind's `leading-*` scale, as real numeric line-height values (#95). */
 const typesetLeadingValues: Record<Typeset["leading"], string> = {
@@ -262,28 +374,35 @@ const typesetFontStacks: Record<TypesetFontFamily, string> = {
 };
 
 /**
- * The `main` rule applying a user's typeset (#95) — the same dashboard root
- * every card renders under, so one rule covers all of them without a card
- * template naming a font or size of its own.
+ * A user's typeset (#95), in the two forms Tailwind actually reads.
+ *
+ * The three fonts are redefined as the custom properties `styles.css` maps
+ * its `@theme inline` font tokens onto, never as `font-family` rules of our
+ * own. A font utility compiles to `font-family: var(--body-font)` and lands
+ * on the element itself, so it beats anything inherited from a `main` rule:
+ * `CardTitle` carries `font-heading`, which is exactly the case a selector
+ * rule cannot reach. Overriding the property instead means every component
+ * carrying a font utility follows the viewing user without naming a font of
+ * its own — the same indirection the colour tokens already rely on.
+ *
+ * Size, leading, and flow are not tokens, so they stay a rule on `main` —
+ * the dashboard root every card renders under.
  *
  * ponytail: `menuColour`/`menuAccent` are stored and generated into the
  * user's `components.json` but have no CSS rule here yet — this codebase has
  * no menu-shaped card template to style. Add the rule once one exists.
  */
 function typesetCss(typeset: Typeset): string {
-  return `main {
+  return `:root {
+  --body-font: ${typesetFontStacks[typeset.bodyFont]};
+  --heading-font: ${typesetFontStacks[typeset.headingFont]};
+  --monospace-font: ${typesetFontStacks[typeset.monospaceFont]};
+}
+
+main {
   font-size: calc(1rem * ${typeset.size});
   line-height: ${typesetLeadingValues[typeset.leading]};
   text-wrap: ${typeset.flow};
-  font-family: ${typesetFontStacks[typeset.bodyFont]};
-}
-
-main :is(h1, h2, h3, h4, h5, h6) {
-  font-family: ${typesetFontStacks[typeset.headingFont]};
-}
-
-main :is(code, pre, kbd, samp) {
-  font-family: ${typesetFontStacks[typeset.monospaceFont]};
 }
 `;
 }
@@ -295,41 +414,49 @@ function tokenBlockDeclarations(block: TokenBlock): string {
 }
 
 /**
- * The viewing user's effective stylesheet from their base colour (D26, #95):
- * a `:root` block naming only semantic colour tokens `styles.css` already
- * declares, plus their typeset. Computed fresh from the stored appearance
- * every time, never cached, so no stale value can survive a change.
+ * The viewing user's effective stylesheet from one complete token set (D26,
+ * D27): a `:root` block and a `.dark` block, plus their typeset. Both the
+ * base-colour and the preset path produce a full light/dark pair, so both
+ * emit through here — a base colour that only redefined `:root` would leave
+ * `styles.css`'s `.dark` block in force for its own tokens while overriding
+ * it for the light ones, which is the mismatch that made dark mode
+ * unreachable from a base colour.
+ *
+ * `.dark` follows `:root` for the same reason `styles.css` orders them that
+ * way: the two selectors carry equal specificity, so the later block is what
+ * wins wherever the class is active.
+ *
+ * A preset's `themeMapping` and `baseRules` are not re-emitted — `styles.css`
+ * already compiles that mapping and reset once, and every preset in this
+ * project uses the same one (D27). `radius` is a preset's to set; the
+ * base-colour path leaves the project default alone.
  */
-function baseColourCss(baseColour: BaseColour, typeset: Typeset): string {
-  const colourDeclarations = Object.entries(baseColourTokenValues[baseColour])
-    .map(([token, value]) => `  --${token}: ${value};`)
-    .join("\n");
+function tokenSetCss(
+  light: TokenBlock,
+  dark: TokenBlock,
+  radius: string | undefined,
+  typeset: Typeset,
+): string {
   return `:root {
-${colourDeclarations}
+${radius === undefined ? "" : `  --radius: ${radius};\n`}${tokenBlockDeclarations(light)}
+}
+
+.dark {
+${tokenBlockDeclarations(dark)}
 }
 
 ${typesetCss(typeset)}`;
 }
 
 /**
- * The viewing user's effective stylesheet from a selected preset (D26, D27,
- * #96): `:root` and `.dark` blocks straight from the preset's own light and
- * dark token blocks, replacing the base-colour lookup entirely, plus their
- * typeset. The preset's `themeMapping` and `baseRules` are not re-emitted
- * here — `styles.css` already compiles that mapping and reset once, and
- * every preset in this project uses the same one (D27).
+ * The viewing user's effective stylesheet from their base colour (D26, #95),
+ * generated from the Tailwind scale that base colour names. Computed fresh
+ * from the stored appearance every time, never cached, so no stale value can
+ * survive a change.
  */
-function presetCss(preset: Preset, typeset: Typeset): string {
-  return `:root {
-  --radius: ${preset.radius};
-${tokenBlockDeclarations(preset.light)}
-}
-
-.dark {
-${tokenBlockDeclarations(preset.dark)}
-}
-
-${typesetCss(typeset)}`;
+function baseColourCss(baseColour: BaseColour, typeset: Typeset): string {
+  const scale = basePalette[baseColour];
+  return tokenSetCss(lightTokens(scale), darkTokens(scale), undefined, typeset);
 }
 
 /**
@@ -364,6 +491,6 @@ export function appearanceCss(
 ): string {
   const preset = resolveSelectedPreset(appearance, serverPresets);
   return preset
-    ? presetCss(preset, appearance.typeset)
+    ? tokenSetCss(preset.light, preset.dark, preset.radius, appearance.typeset)
     : baseColourCss(appearance.baseColour, appearance.typeset);
 }
