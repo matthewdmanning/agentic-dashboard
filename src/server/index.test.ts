@@ -85,6 +85,10 @@ function createMemoryUserQueryStore(): UserQueryStore {
       [...values.values()].some((entries) =>
         entries.some((entry) => entry.cardMapper === mapperName),
       ),
+    countReferencingIntegration: async (integrationId) =>
+      [...values.values()].flat().filter(
+        (entry) => entry.integration === integrationId,
+      ).length,
   };
 }
 

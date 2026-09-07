@@ -326,6 +326,10 @@ const removeIntegrationMutationSchema = z
   .object({
     type: z.literal("remove-integration"),
     integrationId: z.string().min(1),
+    // Required once a dependency count is nonzero (D40, #93): the ordinary
+    // confirmation (this flag absent or false) never proceeds past a
+    // dependent entry. Never destroys a query -- only its connections.
+    override: z.boolean().optional(),
   })
   .strict();
 

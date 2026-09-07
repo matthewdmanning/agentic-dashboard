@@ -36,6 +36,18 @@ export async function loadBlockedIntegrationNotices(): Promise<string[]> {
   return (await response.json()) as string[];
 }
 
+/** Integrations the caller's own queries name that no longer exist (D40, #93) — a force-removed dependent integration never cascade-deletes a query, so this is the persistent unavailable notice. */
+export async function loadUnavailableQueryNotices(): Promise<string[]> {
+  const response = await fetch(
+    "/api/integrations/unavailable-query-notices",
+    authorized(),
+  );
+  if (!response.ok) {
+    throw await failureFrom(response, "Could not load query notices");
+  }
+  return (await response.json()) as string[];
+}
+
 /**
  * The connect handoff for one connection: hands the service's secret to the
  * server, which stores it outside dashboard configuration, keyed by the

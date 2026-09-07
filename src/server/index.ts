@@ -243,6 +243,28 @@ export async function handleBlockedIntegrationNoticesRequest(
 }
 
 /**
+ * How Settings learns which of the caller's own queries went unavailable
+ * (D40, #93) — force-removing a dependent integration never cascade-deletes
+ * a query, so this is how an owner learns theirs stopped working. Ungated
+ * inside `service.unavailableQueryIntegrations`, the same reasoning as
+ * `blockedIntegrationNotices`.
+ */
+export async function handleUnavailableQueryNoticesRequest(
+  request: Request,
+  service: DashboardService,
+): Promise<Response> {
+  try {
+    return Response.json(
+      await service.unavailableQueryIntegrations(
+        credentialFromRequest(request),
+      ),
+    );
+  } catch (error) {
+    return failureResponse(error);
+  }
+}
+
+/**
  * The connect handoff: hands a connection's secret to `service.connect`,
  * which is the enforcement point (D1, D4) -- the same one MCP's
  * `connect-integration` tool calls, so a role check here would be a second
@@ -442,6 +464,26 @@ async function startServer() {
     if (request.url === "/api/integrations/blocked-notices") {
       try {
         const result = await handleBlockedIntegrationNoticesRequest(
+          new Request(`http://dashboard${request.url}`, {
+            method: request.method,
+            headers: authorizationHeaders(request),
+          }),
+          service,
+        );
+        response.writeHead(result.status, Object.fromEntries(result.headers));
+        response.end(Buffer.from(await result.arrayBuffer()));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "text/plain" });
+        response.end(
+          error instanceof Error ? error.message : "Invalid request",
+        );
+      }
+      return;
+    }
+
+    if (request.url === "/api/integrations/unavailable-query-notices") {
+      try {
+        const result = await handleUnavailableQueryNoticesRequest(
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),

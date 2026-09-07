@@ -886,7 +886,11 @@ describe("integration connections", () => {
     await service.connect("team-calendar", "bob-secret-token", "bob-token");
 
     await service.apply([
-      { type: "remove-integration", integrationId: "team-calendar" },
+      {
+        type: "remove-integration",
+        integrationId: "team-calendar",
+        override: true,
+      },
     ]);
 
     await expect(
@@ -1262,6 +1266,154 @@ describe("integration blocking (#92)", () => {
     await expect(
       service.blockedIntegrationNotices("bob-token"),
     ).resolves.toEqual([]);
+  });
+});
+
+describe("force-remove a dependent integration (#93)", () => {
+  const withTeamCalendar = {
+    ...testConfiguration,
+    integrations: [
+      { id: "team-calendar", type: "google-calendar", settings: {} },
+    ],
+  };
+
+  async function createQueryStore() {
+    const dir = await mkdtemp(join(tmpdir(), "force-remove-queries-"));
+    return createEncryptedQueryStore(
+      join(dir, "queries.json"),
+      createSecretBox(randomBytes(32)),
+    );
+  }
+
+  test("removal with no dependencies completes without an override", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections: createMemoryConnectionStore(),
+      queries: await createQueryStore(),
+    });
+
+    await expect(
+      service.apply([
+        { type: "remove-integration", integrationId: "team-calendar" },
+      ]),
+    ).resolves.toBeDefined();
+    await expect(service.read("integrations")).resolves.toEqual([]);
+  });
+
+  test("removal with dependencies refuses the ordinary confirmation, naming only aggregate counts", async () => {
+    const connections = createMemoryConnectionStore();
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      queries,
+      authStore: {
+        resolve: async (credential: string) =>
+          credential === "alice-token"
+            ? { user: "alice", role: "user" }
+            : undefined,
+      },
+    });
+    await service.connect("team-calendar", "alice-secret", "alice-token");
+    await service.addQuery(
+      {
+        cardId: "welcome",
+        integration: "team-calendar",
+        query: {},
+        cardMapper: "identity",
+      },
+      "alice-token",
+    );
+
+    const failure = await service
+      .apply([{ type: "remove-integration", integrationId: "team-calendar" }])
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(Error);
+    const message = (failure as Error).message;
+    expect(message).toContain("1 connection");
+    expect(message).toContain("1 query");
+    // Never names the affected user, the query's contents, or a credential.
+    expect(message).not.toContain("alice");
+    expect(message).not.toContain("alice-secret");
+    await expect(service.read("integrations")).resolves.toEqual(
+      withTeamCalendar.integrations,
+    );
+  });
+
+  test("the explicit override removes every associated credential but never cascade-deletes a query", async () => {
+    const connections = createMemoryConnectionStore();
+    const queries = await createQueryStore();
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      queries,
+    });
+    await service.connect("team-calendar", "a-secret");
+    await service.addQuery({
+      cardId: "welcome",
+      integration: "team-calendar",
+      query: {},
+      cardMapper: "identity",
+    });
+
+    await service.apply([
+      {
+        type: "remove-integration",
+        integrationId: "team-calendar",
+        override: true,
+      },
+    ]);
+
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBeUndefined();
+    await expect(service.read("queries")).resolves.toEqual([
+      expect.objectContaining({ integration: "team-calendar" }),
+    ]);
+  });
+
+  test("a removed integration's queries stay unreadable to an administrator and visible as unavailable only to their owner", async () => {
+    const queries = await createQueryStore();
+    const authStore = {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "admin-token"
+            ? { user: "root", role: "admin" }
+            : undefined,
+    };
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections: createMemoryConnectionStore(),
+      queries,
+      authStore,
+    });
+    await service.addQuery(
+      {
+        cardId: "welcome",
+        integration: "team-calendar",
+        query: { secretFilter: "alice-only" },
+        cardMapper: "identity",
+      },
+      "alice-token",
+    );
+
+    await service.apply([
+      {
+        type: "remove-integration",
+        integrationId: "team-calendar",
+        override: true,
+      },
+    ]);
+
+    // The owner can tell their query is now unavailable.
+    await expect(
+      service.unavailableQueryIntegrations("alice-token"),
+    ).resolves.toEqual(["team-calendar"]);
+    // An administrator gets none of alice's queries or their contents --
+    // `read("queries")` is ungated but still only ever the caller's own.
+    await expect(service.read("queries", "admin-token")).resolves.toEqual([]);
   });
 });
 

@@ -11,6 +11,7 @@ export function Settings({
   callerRole,
   connectableTypes,
   blockedIntegrationNotices,
+  unavailableQueryNotices,
   onSave,
   onConnect,
 }: {
@@ -21,6 +22,8 @@ export function Settings({
   connectableTypes: string[];
   /** Blocked catalog entries the caller holds a connection to (D40, #92) — persists until the entry is unblocked or removed. */
   blockedIntegrationNotices: string[];
+  /** Integrations the caller's own queries name that no longer exist (D40, #93) — a force-removed dependent integration never cascade-deletes a query. */
+  unavailableQueryNotices: string[];
   onSave: (mutations: readonly Mutation[]) => Promise<void>;
   /** Hands a connection's secret to the server. Not a mutation — see `contract`'s ban on a credential-shaped settings key. */
   onConnect: (integrationId: string, credential: string) => Promise<void>;
@@ -192,6 +195,13 @@ export function Settings({
               {blockedIntegrationNotices.join(", ")}. Your connection and
               data remain stored; reconnecting is not needed once it is
               unblocked.
+            </p>
+          ) : null}
+          {unavailableQueryNotices.length > 0 ? (
+            <p role="alert">
+              Some of your saved queries reference an integration that no
+              longer exists: {unavailableQueryNotices.join(", ")}. They
+              remain stored but will not refresh.
             </p>
           ) : null}
           {settings.integrations.map((integration) => (

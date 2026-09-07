@@ -10,6 +10,7 @@ import {
   connectIntegration,
   loadBlockedIntegrationNotices,
   loadConnectableIntegrationTypes,
+  loadUnavailableQueryNotices,
   refreshIntegrations,
 } from "./integrations-client";
 import { CardView } from "./cards/CardView";
@@ -60,6 +61,9 @@ export function App() {
   const [blockedIntegrationNotices, setBlockedIntegrationNotices] = useState<
     string[]
   >([]);
+  const [unavailableQueryNotices, setUnavailableQueryNotices] = useState<
+    string[]
+  >([]);
   const [pendingCount, setPendingCount] = useState(
     pendingMutationCount(localStorage),
   );
@@ -103,6 +107,9 @@ export function App() {
       .catch(() => undefined);
     void loadBlockedIntegrationNotices()
       .then(setBlockedIntegrationNotices)
+      .catch(() => undefined);
+    void loadUnavailableQueryNotices()
+      .then(setUnavailableQueryNotices)
       .catch(() => undefined);
 
     const handleOnline = () => void sync().then(() => setOffline(false));
@@ -179,6 +186,7 @@ export function App() {
           callerRole={callerRole}
           connectableTypes={connectableTypes}
           blockedIntegrationNotices={blockedIntegrationNotices}
+          unavailableQueryNotices={unavailableQueryNotices}
           onSave={saveMutations}
           onConnect={connectIntegration}
         />

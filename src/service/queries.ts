@@ -37,6 +37,15 @@ export interface UserQueryStore {
    * without crossing that privacy boundary.
    */
   isReferencedByAnyQuery(mapperName: string): Promise<boolean>;
+  /**
+   * How many stored queries across every user name `integrationId` — unlike
+   * `isReferencedByAnyQuery`, `integration` sits inside the sealed payload
+   * (D41), so this decrypts every record to check. It returns only a count,
+   * never a query's contents or its owner, so integration removal's
+   * warn-then-override flow (D40, #93) can size its warning without crossing
+   * D31's privacy boundary.
+   */
+  countReferencingIntegration(integrationId: string): Promise<number>;
 }
 
 /**
@@ -168,6 +177,14 @@ export function createEncryptedQueryStore(
       // Envelope-only: `cardMapper` is cleartext by design (D41), so this
       // never calls `secretBox.open`.
       return records.some((record) => record.cardMapper === mapperName);
+    },
+    countReferencingIntegration: async (integrationId) => {
+      const records = await readRecords(path);
+      const queries = await Promise.all(
+        records.map((record) => toStoredQuery(record, secretBox)),
+      );
+      return queries.filter((query) => query.integration === integrationId)
+        .length;
     },
   };
 }

@@ -9,6 +9,7 @@ function render(
   dashboard: Parameters<typeof Settings>[0]["dashboard"],
   callerRole?: Parameters<typeof Settings>[0]["callerRole"],
   blockedIntegrationNotices: string[] = [],
+  unavailableQueryNotices: string[] = [],
 ) {
   return renderToStaticMarkup(
     createElement(Settings, {
@@ -16,6 +17,7 @@ function render(
       callerRole,
       connectableTypes: ["example-service"],
       blockedIntegrationNotices,
+      unavailableQueryNotices,
       onSave: async () => undefined,
       onConnect: async () => undefined,
     }),
@@ -136,5 +138,37 @@ describe("Settings contract", () => {
     );
 
     expect(integrations).not.toContain("Blocked");
+  });
+
+  test("shows a persistent notice for a query whose integration was removed (#93)", () => {
+    const integrations = fieldset(
+      render(
+        {
+          integrations: [
+            { id: "team-calendar", type: "example-service", settings: {} },
+          ],
+        },
+        undefined,
+        [],
+        ["deleted-integration"],
+      ),
+      "Integrations",
+    );
+
+    expect(integrations).toContain("no longer exists");
+    expect(integrations).toContain("deleted-integration");
+  });
+
+  test("shows no unavailable-query notice when nothing is unavailable", () => {
+    const integrations = fieldset(
+      render({
+        integrations: [
+          { id: "team-calendar", type: "example-service", settings: {} },
+        ],
+      }),
+      "Integrations",
+    );
+
+    expect(integrations).not.toContain("no longer exists");
   });
 });

@@ -224,6 +224,14 @@ export interface DashboardService {
    * stopped working. Never names another user or reveals a credential.
    */
   blockedIntegrationNotices(credential?: string): Promise<string[]>;
+  /**
+   * Distinct integration ids the caller's own queries name that no longer
+   * exist in the catalog (D40, #93) — force-removing a dependent integration
+   * never cascade-deletes a query, so this is how an owner learns theirs
+   * went unavailable. Ungated (D35), the same reasoning as
+   * `blockedIntegrationNotices`.
+   */
+  unavailableQueryIntegrations(credential?: string): Promise<string[]>;
 }
 
 export function createService(dependencies: Dependencies): DashboardService {
@@ -280,6 +288,8 @@ export function createService(dependencies: Dependencies): DashboardService {
       ),
     blockedIntegrationNotices: (credential) =>
       enqueue(() => blockedIntegrationNotices(dependencies, credential)),
+    unavailableQueryIntegrations: (credential) =>
+      enqueue(() => unavailableQueryIntegrations(dependencies, credential)),
   };
 }
 
@@ -498,6 +508,27 @@ async function applyMutations(
       );
       if (existing && existing.state !== mutation.integration.state) {
         requireLevel(role, "integrations", "write");
+      }
+    }
+
+    // Removing an entry with live dependents needs an explicit override
+    // (D40, #93): the ordinary confirmation (no override, or `false`) never
+    // proceeds past a dependent entry. The warning names only aggregate
+    // counts — never which user, what a query asks for, or a credential.
+    if (mutation.type === "remove-integration") {
+      const connectionCount = dependencies.connections
+        ? await dependencies.connections.countForEntry(mutation.integrationId)
+        : 0;
+      const queryCount = dependencies.queries
+        ? await dependencies.queries.countReferencingIntegration(
+            mutation.integrationId,
+          )
+        : 0;
+      if ((connectionCount > 0 || queryCount > 0) && !mutation.override) {
+        throw new ServiceFailure(
+          "in-use",
+          `Integration '${mutation.integrationId}' has ${connectionCount} connection(s) and ${queryCount} quer${queryCount === 1 ? "y" : "ies"} depending on it. Removing it destroys those connections; queries stay stored but become unavailable. Pass override to proceed.`,
+        );
       }
     }
 
@@ -770,6 +801,32 @@ async function blockedIntegrationNotices(
   return blocked
     .filter((_, index) => connectedFlags[index] !== undefined)
     .map((integration) => integration.id);
+}
+
+/**
+ * Which of the caller's own queries name an integration the catalog no
+ * longer has (D40, #93) — Settings' one source for "this saved query stopped
+ * working because its integration was removed." No query store or no
+ * resolved identity both mean nothing to report, not an error.
+ */
+async function unavailableQueryIntegrations(
+  dependencies: Dependencies,
+  credential: string | undefined,
+): Promise<string[]> {
+  const caller = await resolveCaller(dependencies, credential);
+  if (!caller.user || !dependencies.queries) return [];
+
+  const configuration = await readConfiguration(dependencies.persistence);
+  const integrations = await readIntegrations(dependencies, configuration);
+  const knownIds = new Set(integrations.map(({ id }) => id));
+  const queries = await dependencies.queries.list(caller.user);
+  return [
+    ...new Set(
+      queries
+        .map((query) => query.integration)
+        .filter((integrationId) => !knownIds.has(integrationId)),
+    ),
+  ];
 }
 
 function requireQueryStore(dependencies: Dependencies): UserQueryStore {

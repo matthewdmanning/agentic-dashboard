@@ -229,14 +229,19 @@ export function createDashboardMcpServer(service: DashboardService) {
   server.registerTool(
     "remove-integration",
     {
-      description: "Delete an integration not used by a card.",
-      inputSchema: z.object({ integrationId: z.string() }),
+      description:
+        "Delete an integration. Fails naming aggregate connection and query counts if anything depends on it -- pass override to remove it anyway. Removing destroys its connections; queries stay stored but become unavailable.",
+      inputSchema: z.object({
+        integrationId: z.string(),
+        override: z.boolean().optional(),
+      }),
     },
-    async ({ integrationId }) =>
+    async ({ integrationId, override }) =>
       apply(
         {
           type: "remove-integration",
           integrationId,
+          override,
         },
         "Integration removed",
       ),
