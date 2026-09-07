@@ -171,3 +171,45 @@ export function createEncryptedQueryStore(
     },
   };
 }
+
+/**
+ * Re-encrypts every stored query under `currentKeyId`, the same best-effort,
+ * per-record pass `server/integrations/connections.ts`'s rotation does for
+ * connections (#91) — a record that fails to re-encrypt keeps its original
+ * seal, and the file is rewritten once, atomically, only if anything
+ * actually changed.
+ *
+ * Returns every key id still referenced by a stored query afterward — the
+ * caller's answer to "is this old key safe to destroy yet."
+ */
+export async function rotateQueryKeys(
+  path: string,
+  secretBox: SecretBox,
+  currentKeyId: string,
+): Promise<{ remainingKeyIds: Set<string> }> {
+  const records = await readRecords(path);
+  const remainingKeyIds = new Set<string>();
+  let changed = false;
+
+  const rotated = await Promise.all(
+    records.map(async (record) => {
+      if (record.sealed.keyId === currentKeyId) {
+        remainingKeyIds.add(record.sealed.keyId);
+        return record;
+      }
+      try {
+        const plaintext = await secretBox.open(record.owner, record.sealed);
+        const sealed = await secretBox.seal(record.owner, plaintext);
+        changed = true;
+        remainingKeyIds.add(sealed.keyId);
+        return { ...record, sealed };
+      } catch {
+        remainingKeyIds.add(record.sealed.keyId);
+        return record;
+      }
+    }),
+  );
+
+  if (changed) await writeJson(path, rotated);
+  return { remainingKeyIds };
+}

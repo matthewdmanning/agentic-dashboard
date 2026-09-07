@@ -148,3 +148,51 @@ export function createEncryptedConnectionStore(
     },
   };
 }
+
+/**
+ * Re-encrypts every stored connection under `currentKeyId`, using
+ * `secretBox` (built from a ring that still carries every key any record
+ * here might be sealed under) to open each one under its own recorded key
+ * and reseal it under the current one (#91). A record that fails to
+ * re-encrypt keeps its original seal — rotation is best-effort per record,
+ * not all-or-nothing, so one bad record never blocks the rest. The file is
+ * rewritten once, atomically, only if anything actually changed.
+ *
+ * Returns every key id still referenced by a stored connection afterward —
+ * the caller's answer to "is this old key safe to destroy yet."
+ */
+export async function rotateConnectionKeys(
+  path: string,
+  secretBox: SecretBox,
+  currentKeyId: string,
+): Promise<{ remainingKeyIds: Set<string> }> {
+  const connections = await readConnections(path);
+  const remainingKeyIds = new Set<string>();
+  let changed = false;
+
+  const rotated = await Promise.all(
+    connections.map(async (connection) => {
+      if (connection.sealed.keyId === currentKeyId) {
+        remainingKeyIds.add(connection.sealed.keyId);
+        return connection;
+      }
+      try {
+        const identity = connectionIdentity(
+          connection.owner,
+          connection.catalogEntryId,
+        );
+        const plaintext = await secretBox.open(identity, connection.sealed);
+        const sealed = await secretBox.seal(identity, plaintext);
+        changed = true;
+        remainingKeyIds.add(sealed.keyId);
+        return { ...connection, sealed };
+      } catch {
+        remainingKeyIds.add(connection.sealed.keyId);
+        return connection;
+      }
+    }),
+  );
+
+  if (changed) await writeJson(path, rotated);
+  return { remainingKeyIds };
+}

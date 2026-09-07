@@ -20,10 +20,12 @@ import {
 } from "./integrations/connections";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
 import { reconcileIntegrationRetention } from "./integrations/retention";
+import { rotateSecretKeyIfDue } from "./key-rotation";
 import {
   createSecretBox,
-  defaultSecretKeyPath,
-  resolveSecretKey,
+  defaultRotationIntervalDays,
+  defaultSecretKeyRingPath,
+  rotationIntervalDaysEnvVar,
 } from "./secret-box";
 import { handleRegistryRequest } from "./registry";
 import {
@@ -313,8 +315,11 @@ async function startServer() {
     join(workspace, ".dashboard", "queries.json");
   // Outside the data directory by construction (D41): the OS home directory,
   // not the workspace `dashboardPath` et al. sit under.
-  const secretKeyPath =
-    process.env.DASHBOARD_SECRET_KEY_PATH ?? defaultSecretKeyPath();
+  const secretKeyRingPath =
+    process.env.DASHBOARD_SECRET_KEY_PATH ?? defaultSecretKeyRingPath();
+  const rotationIntervalDays = Number(
+    process.env[rotationIntervalDaysEnvVar] ?? defaultRotationIntervalDays,
+  );
   const localUserTokenPath =
     process.env.DASHBOARD_LOCAL_USER_TOKEN_PATH ??
     join(workspace, ".dashboard", "local-user-token");
@@ -327,9 +332,18 @@ async function startServer() {
   // Loopback proves same machine, not same user (D35). The token file does —
   // only the OS account running this process can read it.
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
-  // One host-held key seals both stores (D28, D41) — queries and connections
-  // are the two callers D41 names for this seam.
-  const secretBox = createSecretBox(await resolveSecretKey(secretKeyPath));
+  // One host-held key ring seals both stores (D28, D41, #91) — queries and
+  // connections are the two callers D41 names for this seam, and the two
+  // stores #91's rotation re-encrypts together.
+  const { ring } = await rotateSecretKeyIfDue(
+    {
+      keyRingPath: secretKeyRingPath,
+      connectionsPath,
+      queriesPath,
+    },
+    rotationIntervalDays,
+  );
+  const secretBox = createSecretBox(ring);
   const connections = createEncryptedConnectionStore(
     connectionsPath,
     secretBox,
