@@ -2,6 +2,8 @@
 
 What you need, and where it lives. This file routes; it does not restate. Where a fact has a real source — `package.json`, the git log, the filesystem — go there rather than trusting a copy.
 
+**All relevant docs must be committed in the same commit as their corresponding source code / config changes.**
+
 ## Read before working
 
 | You need                                                          | Read                                                                           |

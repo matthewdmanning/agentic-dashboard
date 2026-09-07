@@ -29,9 +29,10 @@ follow the pattern already in `.dashboard/`.
 
 ---
 
-## Phase 1 — Initial templates and rebuild-on-reload
+## Phase 1 — Initial templates and rebuild-on-reload (complete)
 
-D22, D24, D25, D32, D37, D39. No identity dependency.
+D22, D24, D25, D32, D37, D39. No identity dependency. Closed by #82, #83, #84;
+kept below as the record of what those issues built.
 
 ### 1.1 Initialization creates one active template generation
 
