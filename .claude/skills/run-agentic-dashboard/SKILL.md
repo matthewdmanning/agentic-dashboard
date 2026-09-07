@@ -41,7 +41,11 @@ contract's `dashboardConfigurationSchema`), plus empty `accounts.json` and
 default configuration (one theme, one welcome card). The config file must be
 a full `DashboardConfiguration` object — see
 `src/contract/index.ts:dashboardConfigurationSchema` for the shape
-(`integrations`, `themes`, `dashboard`, `fontScale`, `roles`, `cards`).
+(`integrations`, `themes`, `presets`, `dashboard`, `cards`, `cardMappers`,
+`integrationRetentionDays`). Roles live in a separate file `contract`
+imports, not in this object (D35). A user's own appearance (base colour,
+typeset, menu treatment, presets) is separate per-user state, not part of
+this file either (D33-D35, #94-#96) — see `src/server/appearance.ts`.
 
 **2. List available tools:**
 
@@ -49,12 +53,18 @@ a full `DashboardConfiguration` object — see
 npx tsx .claude/skills/run-agentic-dashboard/driver.ts list <workspaceDir>
 ```
 
-Spawns the MCP server against that workspace and returns the tool names
-(`read-dashboard`, `add-card`, `edit-card`, `remove-card`,
-`patch-card-state`, `insert-card`, `assemble-card-template`,
-`edit-dashboard`, `add-theme`, `edit-theme`, `remove-theme`,
-`set-font-scale`, `add-integration`, `edit-integration`,
-`remove-integration`, `authorize-integration`).
+Spawns the MCP server against that workspace and returns the current tool
+names — run `list` for the authoritative set rather than trusting this doc,
+since tools are added as issues land. As of #96: `read-dashboard`,
+`add-card`, `edit-card`, `remove-card`, `patch-card-state`, `insert-card`,
+`assemble-card-template`, `edit-dashboard`, `add-theme`, `edit-theme`,
+`remove-theme`, `add-preset`, `remove-preset`, `add-integration`,
+`edit-integration`, `remove-integration`, `block-integration`,
+`unblock-integration`, `set-integration-retention-policy`,
+`connect-integration`, `disconnect-integration`, `read-appearance`,
+`set-base-colour`, `set-typeset`, `set-menu-appearance`,
+`add-personal-preset`, `remove-personal-preset`, `select-preset`,
+`clear-preset-selection`. See `docs/agents/mcp.md` for what each group does.
 
 **3. Call one tool** (one-shot — spawns, calls, closes):
 
@@ -128,6 +138,7 @@ missing ) after argument list`. Point the spawn at
   workspace path checked and `stderr: "inherit"` (already set in
   `driver.ts`) to see the child's actual error.
 - Zod validation error from `init <dir> <configPath>` — the JSON file isn't
-  a full `DashboardConfiguration` (all six top-level keys required:
-  `integrations`, `themes`, `dashboard`, `fontScale`, `roles`, `cards`); ids
-  must be unique within `integrations`/`themes`/`cards`, role `name`s unique.
+  a full `DashboardConfiguration` (all seven top-level keys required:
+  `integrations`, `themes`, `presets`, `dashboard`, `cards`, `cardMappers`,
+  `integrationRetentionDays`; `roles` is not one of them — D35); ids must be
+  unique within `integrations`/`themes`/`presets`/`cards`.

@@ -18,18 +18,34 @@ supplies a credential.
 
 ## Registered tools
 
-`read-dashboard` accepts `scope` as `all`, `data`, `cards`, `presentation`,
-`integrations`, or `roles`.
+`read-dashboard` accepts `scope` as `all`, `role`, `data`, `cards`,
+`presentation`, `integrations`, `roles`, or `queries`.
 
-The write tools correspond to the contract mutations:
+Most write tools correspond to one contract mutation each, gated by the
+matching entry in `mutationRequirements`:
 
 - `patch-card-state`
 - `add-card`, `edit-card`, `remove-card`
 - `insert-card`, `edit-dashboard`
 - `assemble-card-template`
-- `add-theme`, `edit-theme`, `remove-theme`, `set-font-scale`
-- `add-integration`, `edit-integration`, `remove-integration`, `authorize-integration`
+- `add-theme`, `edit-theme`, `remove-theme`
+- `add-preset`, `remove-preset` (`presentation: write` — D27, #96)
+- `add-integration`, `edit-integration`, `remove-integration`
+- `block-integration`, `unblock-integration`, `set-integration-retention-policy`
+  (D40, #89, #92)
 
-The service validates each mutation and enforces the required permission level.
-MCP does not read or write data files, refresh integrations, perform path
-containment, or implement a second permission check.
+A second group calls a `DashboardService` method directly instead of
+constructing a mutation — each is ungated by permission (D35), since what it
+touches belongs to the resolved caller by structure, not by category/level:
+
+- `connect-integration`, `disconnect-integration` (D14, D28, D40)
+- `read-appearance`, `set-base-colour`, `set-typeset`, `set-menu-appearance`
+  (D26, D33-D35, #94, #95)
+- `add-personal-preset`, `remove-personal-preset`, `select-preset`,
+  `clear-preset-selection` (#96) — the last two set or clear
+  `UserAppearance.selectedPreset` via `setAppearance`, not a dedicated method
+
+The service validates each mutation (or appearance update) and enforces the
+required permission level where one applies. MCP does not read or write data
+files, refresh integrations, perform path containment, or implement a second
+permission check.
