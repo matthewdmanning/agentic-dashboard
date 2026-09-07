@@ -100,9 +100,7 @@ export async function refreshCardQueries(
   const refreshes: QueryRefresh[] = [];
 
   for (const query of queries) {
-    const integration = integrations.find(
-      ({ id }) => id === query.integration,
-    );
+    const integration = integrations.find(({ id }) => id === query.integration);
     if (!integration) {
       refreshes.push({
         cardId: query.cardId,
@@ -170,7 +168,13 @@ export async function refreshCardQueries(
         continue;
       }
       await context.service.apply(
-        [{ type: "patch-card-state", cardId: query.cardId, patch: validated.data }],
+        [
+          {
+            type: "patch-card-state",
+            cardId: query.cardId,
+            patch: validated.data,
+          },
+        ],
         context.credential,
       );
       refreshes.push({ cardId: query.cardId, status: "refreshed" });

@@ -122,7 +122,9 @@ export async function handleRegistryRequest(
     if (!entry) {
       return Response.json({ message: "Item not found" }, { status: 404 });
     }
-    return Response.json(await buildRegistryItem(entry, { includeContent: true }));
+    return Response.json(
+      await buildRegistryItem(entry, { includeContent: true }),
+    );
   }
 
   return Response.json({ message: "Not found" }, { status: 404 });

@@ -22,7 +22,9 @@ export function CardView({
 }) {
   const cardTemplate = includedCardTemplates[template];
   if (!cardTemplate) {
-    return <p role="alert">This dashboard has no card template '{template}'.</p>;
+    return (
+      <p role="alert">This dashboard has no card template '{template}'.</p>
+    );
   }
 
   const { schema, Component } = cardTemplate;

@@ -3,7 +3,10 @@ import * as z from "zod/v4";
 
 import { cardTemplateSchemas, type DashboardConfiguration } from "../contract";
 import { activeCardTemplateManifest } from "../card-templates/manifest";
-import { cardTemplateSourceFiles, includedCardTemplates } from "../client/cards";
+import {
+  cardTemplateSourceFiles,
+  includedCardTemplates,
+} from "../client/cards";
 
 /**
  * Card template schemas for tests only.
@@ -17,7 +20,9 @@ export const testCardTemplateSchemas: Record<string, z.ZodType<unknown>> = {
   message: z.object({ message: z.string() }).strict(),
   table: z
     .object({
-      columns: z.array(z.object({ key: z.string(), label: z.string() }).strict()),
+      columns: z.array(
+        z.object({ key: z.string(), label: z.string() }).strict(),
+      ),
       rows: z.array(
         z.record(z.string(), z.union([z.string(), z.number(), z.null()])),
       ),
@@ -102,11 +107,13 @@ export function useTestCardTemplates(sourceFile = "CardView.tsx"): void {
       const original = originals.get(name);
       if (original?.schema) cardTemplateSchemas[name] = original.schema;
       else delete cardTemplateSchemas[name];
-      if (original?.sourceFile) cardTemplateSourceFiles[name] = original.sourceFile;
+      if (original?.sourceFile)
+        cardTemplateSourceFiles[name] = original.sourceFile;
       else delete cardTemplateSourceFiles[name];
       if (original?.template) includedCardTemplates[name] = original.template;
       else delete includedCardTemplates[name];
-      if (original?.manifest) activeCardTemplateManifest[name] = original.manifest;
+      if (original?.manifest)
+        activeCardTemplateManifest[name] = original.manifest;
       else delete activeCardTemplateManifest[name];
     }
   });

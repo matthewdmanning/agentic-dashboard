@@ -101,7 +101,11 @@ async function readRecords(path: string): Promise<StoredRecord[]> {
 }
 
 /** Seals `query`'s private half under `owner`, keeping the rest as the cleartext envelope. */
-async function toRecord(owner: string, query: StoredQuery, secretBox: SecretBox): Promise<StoredRecord> {
+async function toRecord(
+  owner: string,
+  query: StoredQuery,
+  secretBox: SecretBox,
+): Promise<StoredRecord> {
   return {
     id: query.id,
     owner,
@@ -115,7 +119,10 @@ async function toRecord(owner: string, query: StoredQuery, secretBox: SecretBox)
 }
 
 /** Opens `record`'s seal under its own recorded owner — never a caller-supplied identity. */
-async function toStoredQuery(record: StoredRecord, secretBox: SecretBox): Promise<StoredQuery> {
+async function toStoredQuery(
+  record: StoredRecord,
+  secretBox: SecretBox,
+): Promise<StoredQuery> {
   const { integration, query } = privatePayloadSchema.parse(
     JSON.parse(await secretBox.open(record.owner, record.sealed)),
   );

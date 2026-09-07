@@ -102,7 +102,9 @@ describe("mutation queue", () => {
 
   test("an unknown-id failure on replay drops the group and reports it", async () => {
     const store = createMemoryStore();
-    enqueue(store, [{ type: "edit-theme", theme: { id: "gone", settings: {} } }]);
+    enqueue(store, [
+      { type: "edit-theme", theme: { id: "gone", settings: {} } },
+    ]);
 
     const { dropped } = await replayQueue(store, async () => {
       throw new RequestFailure("unknown-id", "Unknown theme: gone");

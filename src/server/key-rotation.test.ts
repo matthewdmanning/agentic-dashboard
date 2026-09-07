@@ -64,10 +64,7 @@ describe("rotateSecretKeyIfDue (#91)", () => {
       paths.connectionsPath,
       newBox,
     );
-    const rotatedQueries = createEncryptedQueryStore(
-      paths.queriesPath,
-      newBox,
-    );
+    const rotatedQueries = createEncryptedQueryStore(paths.queriesPath, newBox);
     await expect(
       rotatedConnections.get("alice", "team-calendar"),
     ).resolves.toBe("alice-secret-token");
@@ -81,9 +78,7 @@ describe("rotateSecretKeyIfDue (#91)", () => {
     const rawQueries = JSON.parse(await readFile(paths.queriesPath, "utf8"));
     expect(rawConnections[0].sealed.keyId).toBe(result.ring.currentKeyId);
     expect(rawQueries[0].sealed.keyId).toBe(result.ring.currentKeyId);
-    expect(JSON.stringify(rawConnections)).not.toContain(
-      "alice-secret-token",
-    );
+    expect(JSON.stringify(rawConnections)).not.toContain("alice-secret-token");
   });
 
   test("a record that fails to re-encrypt keeps its original seal, and its old key stays in the ring", async () => {
@@ -98,9 +93,7 @@ describe("rotateSecretKeyIfDue (#91)", () => {
     // Corrupt the stored ciphertext directly, simulating a record that will
     // fail GCM authentication (and so fail re-encryption) without touching
     // its recorded `keyId` -- rotation must leave a record like this alone.
-    const before = JSON.parse(
-      await readFile(paths.connectionsPath, "utf8"),
-    );
+    const before = JSON.parse(await readFile(paths.connectionsPath, "utf8"));
     before[0].sealed.ciphertext = before[0].sealed.ciphertext.replace(
       /.$/,
       before[0].sealed.ciphertext.endsWith("0") ? "1" : "0",

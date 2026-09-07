@@ -161,7 +161,8 @@ export function createSecretBox(source: Buffer | SecretKeyRing): SecretBox {
 export const secretKeyEnvVar = "DASHBOARD_SECRET_KEY";
 
 /** How often the current key is due for rotation (#91, D28): a policy starting point, not a threat-model derivation. */
-export const rotationIntervalDaysEnvVar = "DASHBOARD_KEY_ROTATION_INTERVAL_DAYS";
+export const rotationIntervalDaysEnvVar =
+  "DASHBOARD_KEY_ROTATION_INTERVAL_DAYS";
 export const defaultRotationIntervalDays = 90;
 
 const keyRingFileSchema = z
@@ -179,7 +180,10 @@ function toKeyRing(file: KeyRingFile): SecretKeyRing {
     currentKeyId: file.currentKeyId,
     currentKeyCreatedAt: new Date(file.currentKeyCreatedAt),
     keys: new Map(
-      Object.entries(file.keys).map(([id, hex]) => [id, Buffer.from(hex, "hex")]),
+      Object.entries(file.keys).map(([id, hex]) => [
+        id,
+        Buffer.from(hex, "hex"),
+      ]),
     ),
   };
 }
@@ -249,7 +253,9 @@ export async function writeSecretKeyRingFile(
  * winner's key as permanently unopenable. The loser re-reads instead, so both
  * processes end up with the one ring that was actually persisted.
  */
-export async function resolveSecretKeyRing(path: string): Promise<SecretKeyRing> {
+export async function resolveSecretKeyRing(
+  path: string,
+): Promise<SecretKeyRing> {
   const fromEnv = process.env[secretKeyEnvVar];
   if (fromEnv) return singleKeyRing(Buffer.from(fromEnv, "hex"));
 

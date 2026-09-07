@@ -9,7 +9,8 @@
     "build": "tsc --noEmit && vite build",
     "mcp": "tsx src/mcp/index.ts",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
-    "format:check": "npx --yes prettier@3.6.2 --check \"**/*.md\"",
+    "format": "npx --yes prettier@3.6.2 --write \"**/*.md\" \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.ts\"",
+    "format:check": "npx --yes prettier@3.6.2 --check \"**/*.md\" \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "tsx e2e/prepare-workspace.ts && playwright test"

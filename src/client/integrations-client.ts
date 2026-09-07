@@ -8,7 +8,10 @@ export interface IntegrationRefresh {
 
 /** Runs every card's queries. The view names no service; the server dispatches. */
 export async function refreshIntegrations(): Promise<IntegrationRefresh[]> {
-  const response = await fetch("/api/integrations/refresh", authorized({ method: "POST" }));
+  const response = await fetch(
+    "/api/integrations/refresh",
+    authorized({ method: "POST" }),
+  );
   if (!response.ok) {
     throw await failureFrom(response, "Could not refresh integrations");
   }
@@ -79,7 +82,9 @@ export async function connectIntegration(
  * itself via a mutation. ponytail: wire this in when Settings gets a real
  * disconnect-without-removing control; not required by #88's acceptance.
  */
-export async function disconnectIntegration(integrationId: string): Promise<void> {
+export async function disconnectIntegration(
+  integrationId: string,
+): Promise<void> {
   const response = await fetch(
     "/api/integrations/disconnect",
     authorized({

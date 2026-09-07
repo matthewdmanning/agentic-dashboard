@@ -3,7 +3,10 @@ import { mkdtemp, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { cardTemplateSourceFiles, includedCardTemplates } from "../client/cards";
+import {
+  cardTemplateSourceFiles,
+  includedCardTemplates,
+} from "../client/cards";
 import { createService, type DashboardPersistence } from "../service";
 import { defaultDashboardConfiguration } from "../contract";
 import { handleRegistryRequest } from "./registry";
@@ -22,9 +25,9 @@ describe("dashboard registry", () => {
     const body = await response.json();
 
     expect(body.$schema).toBe("https://ui.shadcn.com/schema/registry.json");
-    expect(body.items.map((item: { name: string }) => item.name).sort()).toEqual(
-      Object.keys(includedCardTemplates).sort(),
-    );
+    expect(
+      body.items.map((item: { name: string }) => item.name).sort(),
+    ).toEqual(Object.keys(includedCardTemplates).sort());
     for (const item of body.items) {
       expect(item.files[0].content).toBeUndefined();
     }

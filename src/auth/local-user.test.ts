@@ -70,7 +70,9 @@ describe("local-user token", () => {
   });
 
   test("reading a token that was never provisioned is not an error", async () => {
-    await expect(readLocalUserToken(await tokenPath())).resolves.toBeUndefined();
+    await expect(
+      readLocalUserToken(await tokenPath()),
+    ).resolves.toBeUndefined();
   });
 
   test("matches only the exact token", () => {

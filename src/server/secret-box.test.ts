@@ -76,9 +76,7 @@ describe("secret key ring (#91)", () => {
     );
     const rotatedBox = createSecretBox(rotatedRing);
 
-    await expect(rotatedBox.open("alice", sealed)).resolves.toBe(
-      "top secret",
-    );
+    await expect(rotatedBox.open("alice", sealed)).resolves.toBe("top secret");
     // New seals land on the new key, not the retired one.
     const resealed = await rotatedBox.seal("alice", "top secret");
     expect(resealed.keyId).toBe(deriveKeyId(newKey));

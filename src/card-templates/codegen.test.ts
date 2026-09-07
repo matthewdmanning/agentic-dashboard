@@ -37,7 +37,13 @@ describe("generateComponentSource", () => {
         {
           component: "CardContent",
           props: { "aria-live": "polite" },
-          children: [{ component: "Badge", props: { variant: "secondary" }, children: [] }],
+          children: [
+            {
+              component: "Badge",
+              props: { variant: "secondary" },
+              children: [],
+            },
+          ],
         },
       ],
     };
@@ -91,11 +97,15 @@ describe("generateComponentSource", () => {
         "bin",
         "tsc",
       );
-      execFileSync(process.execPath, [tscBin, "--noEmit", "-p", "tsconfig.json"], {
-        cwd: process.cwd(),
-        stdio: "pipe",
-        encoding: "utf8",
-      });
+      execFileSync(
+        process.execPath,
+        [tscBin, "--noEmit", "-p", "tsconfig.json"],
+        {
+          cwd: process.cwd(),
+          stdio: "pipe",
+          encoding: "utf8",
+        },
+      );
     } catch (error) {
       const stdout = (error as { stdout?: string }).stdout ?? "";
       throw new Error(`tsc failed:\n${stdout}`);
@@ -111,7 +121,12 @@ describe("generateComponentSource", () => {
       children: [],
     };
     const source = generateComponentSource(tree);
-    const file = join(process.cwd(), "src", "card-templates", "__smoke-bad.tsx");
+    const file = join(
+      process.cwd(),
+      "src",
+      "card-templates",
+      "__smoke-bad.tsx",
+    );
     writeFileSync(file, source);
     try {
       const tscBin = join(
@@ -122,11 +137,15 @@ describe("generateComponentSource", () => {
         "tsc",
       );
       expect(() =>
-        execFileSync(process.execPath, [tscBin, "--noEmit", "-p", "tsconfig.json"], {
-          cwd: process.cwd(),
-          stdio: "pipe",
-          encoding: "utf8",
-        }),
+        execFileSync(
+          process.execPath,
+          [tscBin, "--noEmit", "-p", "tsconfig.json"],
+          {
+            cwd: process.cwd(),
+            stdio: "pipe",
+            encoding: "utf8",
+          },
+        ),
       ).toThrow();
     } finally {
       unlinkSync(file);

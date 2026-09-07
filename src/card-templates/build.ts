@@ -201,7 +201,11 @@ export async function promoteCardTemplates(
   const result = await prepareCardTemplatePromotion(candidates, paths);
   if (!result.ok) return result;
   await result.prepared.commit();
-  return { ok: true, manifest: result.manifest, clientBuild: result.clientBuild };
+  return {
+    ok: true,
+    manifest: result.manifest,
+    clientBuild: result.clientBuild,
+  };
 }
 
 async function stage(

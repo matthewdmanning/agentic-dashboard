@@ -22,7 +22,10 @@ const query: StoredQuery = {
 describe("encrypted query store", () => {
   test("the stored file holds no plaintext integration reference or query parameters", async () => {
     const path = await tempQueriesPath();
-    const store = createEncryptedQueryStore(path, createSecretBox(randomBytes(32)));
+    const store = createEncryptedQueryStore(
+      path,
+      createSecretBox(randomBytes(32)),
+    );
 
     await store.add("alice", query);
 
@@ -55,7 +58,10 @@ describe("encrypted query store", () => {
 
   test("two users' queries live in one store and each reads only their own", async () => {
     const path = await tempQueriesPath();
-    const store = createEncryptedQueryStore(path, createSecretBox(randomBytes(32)));
+    const store = createEncryptedQueryStore(
+      path,
+      createSecretBox(randomBytes(32)),
+    );
 
     await store.add("alice", query);
     await store.add("bob", { ...query, id: "q2" });

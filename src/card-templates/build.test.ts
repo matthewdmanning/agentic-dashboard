@@ -3,10 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import {
-  promoteCardTemplates,
-  type CardTemplateCandidate,
-} from "./build";
+import { promoteCardTemplates, type CardTemplateCandidate } from "./build";
 
 async function temporaryPaths() {
   const dir = await mkdtemp(join(tmpdir(), "card-template-promote-"));
@@ -54,10 +51,7 @@ export function NoteCard() {
 
 const invalidSchemaCandidate: CardTemplateCandidate = {
   ...validCandidate,
-  jsonSchema: { type: "not-a-real-type" } as unknown as Record<
-    string,
-    unknown
-  >,
+  jsonSchema: { type: "not-a-real-type" } as unknown as Record<string, unknown>,
 };
 
 describe("promoteCardTemplates", () => {
@@ -77,7 +71,9 @@ describe("promoteCardTemplates", () => {
       },
     });
     expect(result.clientBuild).toEqual({
-      templates: [{ name: "note", sourceFile: validCandidate.clientSourcePath }],
+      templates: [
+        { name: "note", sourceFile: validCandidate.clientSourcePath },
+      ],
     });
     expect(JSON.parse(await readFile(paths.manifestPath, "utf8"))).toEqual(
       result.manifest,
