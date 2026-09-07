@@ -50,11 +50,29 @@ function render(
   );
 }
 
-/** The markup of one fieldset, so a control elsewhere cannot satisfy the test. */
+/**
+ * The markup of one fieldset, so a control elsewhere cannot satisfy the test.
+ * The legend is matched loosely because it is composed from `FieldLegend`,
+ * which carries its own `data-slot` and classes.
+ */
 function fieldset(html: string, legend: string): string {
-  const start = html.indexOf(`<legend>${legend}</legend>`);
+  const start = html.search(new RegExp(`<legend[^>]*>${legend}</legend>`));
   expect(start).toBeGreaterThan(-1);
   return html.slice(start, html.indexOf("</fieldset>", start));
+}
+
+/**
+ * The value each choice control currently shows. The options themselves live
+ * in a popup that static rendering never opens, so what a rendered control
+ * reveals is its selection — which is the part these tests are about. That the
+ * options are closed to a supported vocabulary is enforced by the contract and
+ * covered in `contract/index.test.ts`; here the controls are driven straight
+ * from those same exported vocabularies.
+ */
+function shownValues(html: string): string[] {
+  return [...html.matchAll(/data-slot="select-value"[^>]*>([^<]*)/g)].map(
+    (match) => match[1],
+  );
 }
 
 describe("Settings contract", () => {
@@ -207,12 +225,7 @@ describe("Settings contract", () => {
       "Appearance",
     );
 
-    expect(appearance).toContain('value="slate" selected');
-    expect(appearance).toContain(">neutral<");
-    expect(appearance).toContain(">gray<");
-    expect(appearance).toContain(">zinc<");
-    expect(appearance).toContain(">stone<");
-    expect(appearance).toContain(">slate<");
+    expect(shownValues(appearance)).toContain("slate");
   });
 
   test("renders the Appearance fieldset even with no permission bundle at all", () => {
@@ -240,13 +253,17 @@ describe("Settings contract", () => {
       "Appearance",
     );
 
-    expect(appearance).toContain('value="relaxed" selected');
-    expect(appearance).toContain('value="balance" selected');
-    expect(appearance).toContain('value="serif" selected');
-    expect(appearance).toContain('value="mono" selected');
-    expect(appearance).toContain('value="sans" selected');
-    expect(appearance).toContain('value="inverted" selected');
-    expect(appearance).toContain('value="bold" selected');
+    expect(shownValues(appearance)).toEqual(
+      expect.arrayContaining([
+        "relaxed",
+        "balance",
+        "serif",
+        "mono",
+        "sans",
+        "inverted",
+        "bold",
+      ]),
+    );
     expect(appearance).not.toContain("Font scale");
   });
 
