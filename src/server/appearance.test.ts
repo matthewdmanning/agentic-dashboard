@@ -1,8 +1,9 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
+import { encodeUserPathSegment } from "../auth";
 import { defaultUserAppearance, type UserAppearance } from "../contract";
 import {
   appearanceCss,
@@ -116,9 +117,49 @@ describe("writeUserComponentsConfig (D34, #94)", () => {
     );
 
     const generated = JSON.parse(
-      await readFile(join(componentsDir, "alice.json"), "utf8"),
+      await readFile(
+        join(componentsDir, `${encodeUserPathSegment("alice")}.json`),
+        "utf8",
+      ),
     ) as { tailwind: { baseColor: string } };
     expect(generated.tailwind.baseColor).toBe("stone");
+  });
+
+  test("an identity carrying path separators still writes one file inside the directory", async () => {
+    const workspace = await mkdtemp(join(tmpdir(), "components-"));
+    const templatePath = join(workspace, "components.json");
+    const componentsDir = join(workspace, "components");
+    await writeFile(
+      templatePath,
+      JSON.stringify({
+        style: "new-york",
+        rsc: false,
+        tsx: true,
+        tailwind: {
+          config: "",
+          css: "src/styles.css",
+          cssVariables: true,
+          prefix: "",
+        },
+        iconLibrary: "lucide",
+        rtl: false,
+        aliases: {},
+      }),
+    );
+
+    await writeUserComponentsConfig(
+      componentsDir,
+      templatePath,
+      "../../escaped",
+      appearance({ baseColour: "slate" }),
+    );
+
+    // Everything the directory holds is one encoded segment, so nothing was
+    // written beside or above it.
+    expect(await readdir(componentsDir)).toEqual([
+      `${encodeUserPathSegment("../../escaped")}.json`,
+    ]);
+    expect(await readdir(workspace)).toEqual(["components", "components.json"]);
   });
 });
 

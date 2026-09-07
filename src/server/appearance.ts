@@ -2,6 +2,7 @@ import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import * as z from "zod/v4";
 
+import { encodeUserPathSegment } from "../auth";
 import {
   userAppearanceSchema,
   type BaseColour,
@@ -142,6 +143,12 @@ export function generateUserComponentsConfig(
  * whenever their appearance changes (D34) — the whole file, every time,
  * never a patch, so no stale or project-owned field can survive a
  * regeneration.
+ *
+ * The filename goes through `encodeUserPathSegment` rather than interpolating
+ * the identity directly: an identity is an account name, not a validated path
+ * component, so a `/`, a `\`, or a `..` in one would otherwise decide where
+ * this writes. Encoding makes it exactly one segment, and makes two identities
+ * that differ only in path-significant characters land on different files.
  */
 export async function writeUserComponentsConfig(
   componentsDir: string,
@@ -153,7 +160,7 @@ export async function writeUserComponentsConfig(
     JSON.parse(await readFile(templatePath, "utf8")),
   );
   await writeJson(
-    join(componentsDir, `${user}.json`),
+    join(componentsDir, `${encodeUserPathSegment(user)}.json`),
     generateUserComponentsConfig(template, appearance),
   );
 }

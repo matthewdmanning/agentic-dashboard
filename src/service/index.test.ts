@@ -4,6 +4,7 @@ import { tmpdir, userInfo } from "node:os";
 import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { encodeUserPathSegment } from "../auth";
 import {
   defaultDashboardConfiguration,
   roles,
@@ -1986,7 +1987,10 @@ describe("user appearance (#94, #95)", () => {
 
     const generated = JSON.parse(
       await readFile(
-        join(componentsDir, `${userInfo().username}.json`),
+        join(
+          componentsDir,
+          `${encodeUserPathSegment(userInfo().username)}.json`,
+        ),
         "utf8",
       ),
     ) as Record<string, unknown>;
