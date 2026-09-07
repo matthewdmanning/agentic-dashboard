@@ -6,7 +6,7 @@ import { createServer as createViteServer } from "vite";
 
 import { createFileAuthStore } from "../auth";
 import { provisionLocalUserToken } from "../auth/local-user";
-import type { Mutation } from "../contract";
+import { parseDashboardConfiguration, type Mutation } from "../contract";
 import {
   createFilePersistence,
   createService,
@@ -17,6 +17,7 @@ import {
 import { createEncryptedQueryStore } from "../service/queries";
 import { createEncryptedConnectionStore } from "./integrations/connections";
 import { createFileIntegrationCatalog } from "./integrations/catalog";
+import { reconcileIntegrationRetention } from "./integrations/retention";
 import {
   createSecretBox,
   defaultSecretKeyPath,
@@ -28,10 +29,7 @@ import {
   defaultCardTemplateManifestPath,
 } from "../card-templates/active-manifest";
 import type { FetchCalendar } from "./integrations/google-calendar";
-import {
-  refreshCardQueries,
-  type TokenProvider,
-} from "./integrations";
+import { refreshCardQueries, type TokenProvider } from "./integrations";
 
 const readScopes = [
   "all",
@@ -53,13 +51,17 @@ export async function handleDashboardConfigurationRequest(
     if (request.method === "GET") {
       const scope = new URL(request.url).searchParams.get("scope") ?? "all";
       if (!(readScopes as readonly string[]).includes(scope)) {
-            return Response.json(
+        return Response.json(
           { code: "invalid-request", message: "Unknown dashboard scope" },
           { status: 400 },
         );
       }
       return Response.json(
-        await readDashboardScope(service, scope as (typeof readScopes)[number], request),
+        await readDashboardScope(
+          service,
+          scope as (typeof readScopes)[number],
+          request,
+        ),
       );
     }
 
@@ -257,7 +259,10 @@ export async function handleIntegrationDisconnectRequest(
       );
     }
 
-    await service.disconnect(body.integrationId, credentialFromRequest(request));
+    await service.disconnect(
+      body.integrationId,
+      credentialFromRequest(request),
+    );
     return Response.json({ ok: true });
   } catch (error) {
     return failureResponse(error);
@@ -280,7 +285,8 @@ async function startServer() {
     join(workspace, ".dashboard", "integrations.json");
   // One encrypted store for every user's queries (D41) — no per-user directory.
   const queriesPath =
-    process.env.DASHBOARD_QUERIES_PATH ?? join(workspace, ".dashboard", "queries.json");
+    process.env.DASHBOARD_QUERIES_PATH ??
+    join(workspace, ".dashboard", "queries.json");
   // Outside the data directory by construction (D41): the OS home directory,
   // not the workspace `dashboardPath` et al. sit under.
   const secretKeyPath =
@@ -300,11 +306,15 @@ async function startServer() {
   // One host-held key seals both stores (D28, D41) — queries and connections
   // are the two callers D41 names for this seam.
   const secretBox = createSecretBox(await resolveSecretKey(secretKeyPath));
-  const connections = createEncryptedConnectionStore(connectionsPath, secretBox);
+  const connections = createEncryptedConnectionStore(
+    connectionsPath,
+    secretBox,
+  );
   const catalog = createFileIntegrationCatalog(catalogPath);
   const queries = createEncryptedQueryStore(queriesPath, secretBox);
+  const persistence = createFilePersistence(dashboardPath);
   const service = createService({
-    persistence: createFilePersistence(dashboardPath),
+    persistence,
     authStore: createFileAuthStore(authStorePath),
     connections,
     catalog,
@@ -313,6 +323,17 @@ async function startServer() {
     cardTemplateManifestPath,
     cardTemplateClientBuildPath,
   });
+  // Cleanup runs at startup and after every connection change (#89) — no
+  // scheduler. This is the startup half; `service` covers the other trigger.
+  {
+    const { integrationRetentionDays } = parseDashboardConfiguration(
+      await persistence.read(),
+    );
+    await reconcileIntegrationRetention(
+      { catalog, connections },
+      integrationRetentionDays,
+    );
+  }
   // Internal plumbing for the server's own outbound calls, not a caller-facing
   // operation -- reads the same store `service` composes, directly.
   //
@@ -324,7 +345,10 @@ async function startServer() {
   // configured (D35), and is exactly what the credential store this
   // replaces did.
   const tokenProvider: TokenProvider = async (integrationId) => {
-    const credential = await connections.get(userInfo().username, integrationId);
+    const credential = await connections.get(
+      userInfo().username,
+      integrationId,
+    );
     if (!credential) {
       throw new Error(
         `Integration '${integrationId}' is not connected. Connect it in Settings.`,
@@ -342,7 +366,9 @@ async function startServer() {
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),
-            body: chunks.length ? Buffer.concat(chunks).toString("utf8") : undefined,
+            body: chunks.length
+              ? Buffer.concat(chunks).toString("utf8")
+              : undefined,
           }),
           service,
         );
@@ -350,7 +376,9 @@ async function startServer() {
         response.end(Buffer.from(await result.arrayBuffer()));
       } catch (error) {
         response.writeHead(400, { "content-type": "text/plain" });
-        response.end(error instanceof Error ? error.message : "Invalid request");
+        response.end(
+          error instanceof Error ? error.message : "Invalid request",
+        );
       }
       return;
     }
@@ -368,7 +396,9 @@ async function startServer() {
         response.end(Buffer.from(await result.arrayBuffer()));
       } catch (error) {
         response.writeHead(400, { "content-type": "text/plain" });
-        response.end(error instanceof Error ? error.message : "Invalid request");
+        response.end(
+          error instanceof Error ? error.message : "Invalid request",
+        );
       }
       return;
     }
@@ -381,7 +411,9 @@ async function startServer() {
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),
-            body: chunks.length ? Buffer.concat(chunks).toString("utf8") : undefined,
+            body: chunks.length
+              ? Buffer.concat(chunks).toString("utf8")
+              : undefined,
           }),
           service,
         );
@@ -402,7 +434,9 @@ async function startServer() {
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),
-            body: chunks.length ? Buffer.concat(chunks).toString("utf8") : undefined,
+            body: chunks.length
+              ? Buffer.concat(chunks).toString("utf8")
+              : undefined,
           }),
           service,
         );
@@ -425,7 +459,9 @@ async function startServer() {
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),
-            body: chunks.length ? Buffer.concat(chunks).toString("utf8") : undefined,
+            body: chunks.length
+              ? Buffer.concat(chunks).toString("utf8")
+              : undefined,
           }),
           { tokenProvider, service },
         );
@@ -433,9 +469,7 @@ async function startServer() {
         response.end(Buffer.from(await result.arrayBuffer()));
       } catch (error) {
         response.writeHead(400, { "content-type": "text/plain" });
-        response.end(
-          error instanceof Error ? error.message : "Refresh failed",
-        );
+        response.end(error instanceof Error ? error.message : "Refresh failed");
       }
       return;
     }
@@ -473,9 +507,7 @@ async function startServer() {
 
 function authorizationHeaders(request: import("node:http").IncomingMessage) {
   const authorization = request.headers.authorization;
-  return typeof authorization !== "string"
-    ? undefined
-    : { authorization };
+  return typeof authorization !== "string" ? undefined : { authorization };
 }
 
 if (

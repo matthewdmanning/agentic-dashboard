@@ -49,7 +49,8 @@ const testConfiguration = withTestCard(defaultDashboardConfiguration);
 /** Keyed by user and catalog entry (D40, #88), unlike the single-key credential store it replaced. */
 function createMemoryConnectionStore(): ConnectionStore {
   const values = new Map<string, string>();
-  const key = (user: string, catalogEntryId: string) => `${user} ${catalogEntryId}`;
+  const key = (user: string, catalogEntryId: string) =>
+    `${user} ${catalogEntryId}`;
   return {
     get: async (user, catalogEntryId) => values.get(key(user, catalogEntryId)),
     set: async (user, catalogEntryId, credential) => {
@@ -60,9 +61,14 @@ function createMemoryConnectionStore(): ConnectionStore {
     },
     removeAllForEntry: async (catalogEntryId) => {
       for (const existingKey of [...values.keys()]) {
-        if (existingKey.endsWith(` ${catalogEntryId}`)) values.delete(existingKey);
+        if (existingKey.endsWith(` ${catalogEntryId}`))
+          values.delete(existingKey);
       }
     },
+    countForEntry: async (catalogEntryId) =>
+      [...values.keys()].filter((existingKey) =>
+        existingKey.endsWith(` ${catalogEntryId}`),
+      ).length,
   };
 }
 
@@ -310,6 +316,7 @@ describe("dashboard service", () => {
       themes: testConfiguration.themes,
       fontScale: testConfiguration.fontScale,
       integrations: testConfiguration.integrations,
+      integrationRetentionDays: testConfiguration.integrationRetentionDays,
       roles,
     });
   });
@@ -548,7 +555,10 @@ describe("card template assembly", () => {
 
   test("fails before promotion when the tree does not type-check", async () => {
     const paths = await temporaryCardTemplatePaths();
-    const service = createService({ persistence: createMemoryPersistence(), ...paths });
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...paths,
+    });
 
     await expect(
       service.apply([
@@ -567,9 +577,9 @@ describe("card template assembly", () => {
 
     await expect(readFile(templatePath, "utf8")).rejects.toThrow();
     // The prior generation — here, none — stays byte-for-byte active.
-    await expect(readFile(paths.cardTemplateManifestPath, "utf8")).resolves.toBe(
-      "{}\n",
-    );
+    await expect(
+      readFile(paths.cardTemplateManifestPath, "utf8"),
+    ).resolves.toBe("{}\n");
   });
 
   test("fails a real component given a wrong prop type, not just an unknown one", async () => {
@@ -652,7 +662,9 @@ describe("card template assembly", () => {
         ]),
       ).resolves.toBeDefined();
 
-      expect(vi.mocked(prepareCardTemplatePromotion).mock.calls.length - before).toBe(1);
+      expect(
+        vi.mocked(prepareCardTemplatePromotion).mock.calls.length - before,
+      ).toBe(1);
     } finally {
       await unlink(templatePath).catch(() => undefined);
       await unlink(otherTemplatePath).catch(() => undefined);
@@ -661,7 +673,10 @@ describe("card template assembly", () => {
 
   test("a batch failure after a successful type-check discards the assembled template rather than leaving it half-promoted", async () => {
     const paths = await temporaryCardTemplatePaths();
-    const service = createService({ persistence: createMemoryPersistence(), ...paths });
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...paths,
+    });
 
     await expect(
       service.apply([
@@ -671,7 +686,10 @@ describe("card template assembly", () => {
           jsonSchema: validJsonSchema,
           composition: { component: "Badge", props: {}, children: [] },
         },
-        { type: "edit-theme", theme: { id: "definitely-missing", settings: {} } },
+        {
+          type: "edit-theme",
+          theme: { id: "definitely-missing", settings: {} },
+        },
       ]),
     ).rejects.toThrow("Unknown theme: definitely-missing");
 
@@ -679,14 +697,17 @@ describe("card template assembly", () => {
     // same batch failed — so neither half of the promotion may have landed:
     // real filesystem state, not a mock assertion.
     await expect(readFile(templatePath, "utf8")).rejects.toThrow();
-    await expect(readFile(paths.cardTemplateManifestPath, "utf8")).resolves.toBe(
-      "{}\n",
-    );
+    await expect(
+      readFile(paths.cardTemplateManifestPath, "utf8"),
+    ).resolves.toBe("{}\n");
   });
 
   test("promotion and tracked source land together or not at all", async () => {
     const paths = await temporaryCardTemplatePaths();
-    const service = createService({ persistence: createMemoryPersistence(), ...paths });
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      ...paths,
+    });
 
     await expect(
       service.apply([
@@ -784,9 +805,9 @@ describe("integration connections", () => {
     });
 
     await service.connect("team-calendar", "secret-token");
-    await expect(connections.get(userInfo().username, "team-calendar")).resolves.toBe(
-      "secret-token",
-    );
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBe("secret-token");
 
     await service.disconnect("team-calendar");
     await expect(
@@ -801,9 +822,9 @@ describe("integration connections", () => {
       connections,
     });
 
-    await expect(
-      service.connect("invented", "secret-token"),
-    ).rejects.toThrow("Unknown integration: invented");
+    await expect(service.connect("invented", "secret-token")).rejects.toThrow(
+      "Unknown integration: invented",
+    );
     await expect(
       connections.get(userInfo().username, "invented"),
     ).resolves.toBeUndefined();
@@ -897,13 +918,13 @@ describe("connectable integration types", () => {
   test("refuses a caller with no integrations access", async () => {
     const service = createService({
       persistence: createMemoryPersistence(),
-        localUser: withLocalPermissions({
-          data: "write",
-          cards: "write",
-          presentation: "write",
-          integrations: "noAccess",
-          roles: "noAccess",
-        }),
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "write",
+        presentation: "write",
+        integrations: "noAccess",
+        roles: "noAccess",
+      }),
       connectableTypes: ["google-calendar"],
     });
 
@@ -927,10 +948,12 @@ describe("file-backed integration catalog", () => {
     const second = createService({ persistence, catalog });
 
     const entries = await first.read("integrations");
-    expect(entries).toEqual(expect.arrayContaining([
-      expect.objectContaining({ origin: "default", state: "available" }),
-      expect.objectContaining({ origin: "recommended", state: "available" }),
-    ]));
+    expect(entries).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ origin: "default", state: "available" }),
+        expect.objectContaining({ origin: "recommended", state: "available" }),
+      ]),
+    );
     await expect(second.read("integrations")).resolves.toEqual(entries);
   });
 
@@ -941,14 +964,26 @@ describe("file-backed integration catalog", () => {
       catalog,
     });
 
-    await service.apply([{
-      type: "add-integration",
-      integration: { id: "dynamic-service", type: "dynamic-service", settings: {} },
-    }]);
+    await service.apply([
+      {
+        type: "add-integration",
+        integration: {
+          id: "dynamic-service",
+          type: "dynamic-service",
+          settings: {},
+        },
+      },
+    ]);
 
-    await expect(catalog.read()).resolves.toEqual(expect.arrayContaining([
-      expect.objectContaining({ id: "dynamic-service", origin: "dynamic", state: "available" }),
-    ]));
+    await expect(catalog.read()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "dynamic-service",
+          origin: "dynamic",
+          state: "available",
+        }),
+      ]),
+    );
   });
 
   test("derives connectable choices from available catalog entries", async () => {
@@ -956,11 +991,116 @@ describe("file-backed integration catalog", () => {
     const entries = await catalog.read();
     await catalog.write([
       ...entries,
-      { id: "blocked-service", type: "blocked-service", settings: {}, origin: "dynamic", state: "blocked" },
+      {
+        id: "blocked-service",
+        type: "blocked-service",
+        settings: {},
+        origin: "dynamic",
+        state: "blocked",
+      },
     ]);
-    const service = createService({ persistence: createMemoryPersistence(), catalog });
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      catalog,
+    });
 
-    await expect(service.connectableTypes()).resolves.toEqual(["google-calendar"]);
+    await expect(service.connectableTypes()).resolves.toEqual([
+      "google-calendar",
+    ]);
+  });
+});
+
+describe("unused-integration retention (#89)", () => {
+  async function createCatalog() {
+    return createFileIntegrationCatalog(
+      join(await mkdtemp(join(tmpdir(), "retention-catalog-")), "catalog.json"),
+    );
+  }
+
+  test("a dynamic entry's last disconnect starts its unused clock", async () => {
+    const catalog = await createCatalog();
+    await catalog.add({
+      id: "dynamic-service",
+      type: "dynamic-service",
+      settings: {},
+      origin: "dynamic",
+      state: "available",
+    });
+    const connections = createMemoryConnectionStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      catalog,
+      connections,
+    });
+
+    await service.connect("dynamic-service", "a-secret");
+    await service.disconnect("dynamic-service");
+
+    await expect(catalog.read()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "dynamic-service",
+          unusedSince: expect.any(String),
+        }),
+      ]),
+    );
+  });
+
+  test("reconnecting cancels an entry's unused clock", async () => {
+    const catalog = await createCatalog();
+    await catalog.add({
+      id: "dynamic-service",
+      type: "dynamic-service",
+      settings: {},
+      origin: "dynamic",
+      state: "available",
+    });
+    const connections = createMemoryConnectionStore();
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      catalog,
+      connections,
+    });
+    await service.connect("dynamic-service", "a-secret");
+    await service.disconnect("dynamic-service");
+
+    await service.connect("dynamic-service", "a-new-secret");
+
+    const entries = await catalog.read();
+    expect(
+      entries.find(({ id }) => id === "dynamic-service")?.unusedSince,
+    ).toBeUndefined();
+  });
+
+  test("changing the retention policy requires integrations: write", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "write",
+        presentation: "write",
+        integrations: "read",
+        roles: "noAccess",
+      }),
+    });
+
+    await expect(
+      service.apply([
+        { type: "set-integration-retention-policy", retentionDays: 7 },
+      ]),
+    ).rejects.toThrow("Permission denied");
+  });
+
+  test("a caller with integrations: write can change the retention policy", async () => {
+    const service = createService({ persistence: createMemoryPersistence() });
+
+    await service.apply([
+      { type: "set-integration-retention-policy", retentionDays: 7 },
+    ]);
+
+    await expect(service.read("all")).resolves.toEqual(
+      expect.objectContaining({ integrationRetentionDays: 7 }),
+    );
   });
 });
 
@@ -1086,9 +1226,9 @@ describe("user-owned queries", () => {
         "bob-token",
       ),
     ).rejects.toThrow(`Unknown query: ${stored.id}`);
-    await expect(
-      service.removeQuery(stored.id, "bob-token"),
-    ).rejects.toThrow(`Unknown query: ${stored.id}`);
+    await expect(service.removeQuery(stored.id, "bob-token")).rejects.toThrow(
+      `Unknown query: ${stored.id}`,
+    );
 
     // Untouched: bob's failed attempt did not reach alice's query.
     await expect(service.read("queries", "alice-token")).resolves.toEqual([
@@ -1167,11 +1307,21 @@ describe("card mapper store", () => {
       "alice-token",
     );
     await service.addQuery(
-      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      {
+        cardId: "welcome",
+        integration: "calendar",
+        query: {},
+        cardMapper: "events",
+      },
       "alice-token",
     );
     await service.addQuery(
-      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      {
+        cardId: "welcome",
+        integration: "calendar",
+        query: {},
+        cardMapper: "events",
+      },
       "bob-token",
     );
 
@@ -1201,7 +1351,13 @@ describe("card mapper store", () => {
 
     await expect(
       service.apply(
-        [{ type: "edit-card-mapper", name: "events", spec: { shape: "object", fields: {} } }],
+        [
+          {
+            type: "edit-card-mapper",
+            name: "events",
+            spec: { shape: "object", fields: {} },
+          },
+        ],
         "bob-token",
       ),
     ).rejects.toThrow("cards: write");
@@ -1253,14 +1409,22 @@ describe("card mapper store", () => {
       "alice-token",
     );
     const query = await service.addQuery(
-      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      {
+        cardId: "welcome",
+        integration: "calendar",
+        query: {},
+        cardMapper: "events",
+      },
       "alice-token",
     );
 
     // Even an administrator cannot force it through — removal never
     // cascades into the private query that references it (D38).
     await expect(
-      service.apply([{ type: "remove-card-mapper", name: "events" }], "admin-token"),
+      service.apply(
+        [{ type: "remove-card-mapper", name: "events" }],
+        "admin-token",
+      ),
     ).rejects.toMatchObject({ code: "in-use" });
 
     await expect(service.read("cardMappers", "alice-token")).resolves.toEqual([
@@ -1283,20 +1447,37 @@ describe("card mapper store", () => {
       "alice-token",
     );
     await service.addQuery(
-      { cardId: "welcome", integration: "calendar", query: {}, cardMapper: "events" },
+      {
+        cardId: "welcome",
+        integration: "calendar",
+        query: {},
+        cardMapper: "events",
+      },
       "alice-token",
     );
 
     await expect(
       service.apply(
-        [{ type: "edit-card-mapper", name: "events", spec: { shape: "object", fields: {} } }],
+        [
+          {
+            type: "edit-card-mapper",
+            name: "events",
+            spec: { shape: "object", fields: {} },
+          },
+        ],
         "alice-token",
       ),
     ).rejects.toThrow("cards: write");
 
     await expect(
       service.apply(
-        [{ type: "edit-card-mapper", name: "events", spec: { shape: "object", fields: {} } }],
+        [
+          {
+            type: "edit-card-mapper",
+            name: "events",
+            spec: { shape: "object", fields: {} },
+          },
+        ],
         "admin-token",
       ),
     ).resolves.toBeDefined();
@@ -1332,7 +1513,10 @@ describe("card mapper store", () => {
     ).resolves.toBeDefined();
 
     await expect(
-      service.apply([{ type: "remove-card-mapper", name: "events" }], "alice-token"),
+      service.apply(
+        [{ type: "remove-card-mapper", name: "events" }],
+        "alice-token",
+      ),
     ).resolves.toBeDefined();
 
     await expect(service.read("cardMappers", "alice-token")).resolves.toEqual(

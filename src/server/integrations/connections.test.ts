@@ -5,10 +5,16 @@ import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { createSecretBox } from "../secret-box";
-import { connectionIdentity, createEncryptedConnectionStore } from "./connections";
+import {
+  connectionIdentity,
+  createEncryptedConnectionStore,
+} from "./connections";
 
 async function tempConnectionsPath(): Promise<string> {
-  return join(await mkdtemp(join(tmpdir(), "connections-")), "connections.json");
+  return join(
+    await mkdtemp(join(tmpdir(), "connections-")),
+    "connections.json",
+  );
 }
 
 describe("encrypted connection store", () => {
@@ -25,9 +31,7 @@ describe("encrypted connection store", () => {
     await expect(store.get("alice", "team-calendar")).resolves.toBe(
       "alice-secret",
     );
-    await expect(store.get("bob", "team-calendar")).resolves.toBe(
-      "bob-secret",
-    );
+    await expect(store.get("bob", "team-calendar")).resolves.toBe("bob-secret");
   });
 
   test("one user's connection is invisible under another user's identity", async () => {
@@ -38,9 +42,7 @@ describe("encrypted connection store", () => {
     );
     await store.set("alice", "team-calendar", "alice-secret");
 
-    await expect(
-      store.get("bob", "team-calendar"),
-    ).resolves.toBeUndefined();
+    await expect(store.get("bob", "team-calendar")).resolves.toBeUndefined();
   });
 
   test("the stored file contains no plaintext credential", async () => {
@@ -70,12 +72,8 @@ describe("encrypted connection store", () => {
 
     await store.remove("alice", "team-calendar");
 
-    await expect(
-      store.get("alice", "team-calendar"),
-    ).resolves.toBeUndefined();
-    await expect(store.get("bob", "team-calendar")).resolves.toBe(
-      "bob-secret",
-    );
+    await expect(store.get("alice", "team-calendar")).resolves.toBeUndefined();
+    await expect(store.get("bob", "team-calendar")).resolves.toBe("bob-secret");
   });
 
   test("reconnecting replaces the caller's previous credential for that entry", async () => {
@@ -104,9 +102,7 @@ describe("encrypted connection store", () => {
 
     await store.removeAllForEntry("team-calendar");
 
-    await expect(
-      store.get("alice", "team-calendar"),
-    ).resolves.toBeUndefined();
+    await expect(store.get("alice", "team-calendar")).resolves.toBeUndefined();
     await expect(store.get("bob", "team-calendar")).resolves.toBeUndefined();
     await expect(store.get("alice", "personal-calendar")).resolves.toBe(
       "unrelated-secret",
@@ -115,6 +111,24 @@ describe("encrypted connection store", () => {
     const raw = await readFile(path, "utf8");
     expect(raw).not.toContain("alice-secret-token");
     expect(raw).not.toContain("bob-secret-token");
+  });
+
+  test("countForEntry counts connections across users, per catalog entry", async () => {
+    const path = await tempConnectionsPath();
+    const store = createEncryptedConnectionStore(
+      path,
+      createSecretBox(randomBytes(32)),
+    );
+    await store.set("alice", "team-calendar", "alice-secret");
+    await store.set("bob", "team-calendar", "bob-secret");
+    await store.set("alice", "personal-calendar", "unrelated-secret");
+
+    await expect(store.countForEntry("team-calendar")).resolves.toBe(2);
+    await expect(store.countForEntry("personal-calendar")).resolves.toBe(1);
+    await expect(store.countForEntry("unknown-entry")).resolves.toBe(0);
+
+    await store.remove("alice", "team-calendar");
+    await expect(store.countForEntry("team-calendar")).resolves.toBe(1);
   });
 
   test("a credential sealed for one user fails to open under another user's identity", async () => {

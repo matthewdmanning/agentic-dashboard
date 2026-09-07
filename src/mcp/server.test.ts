@@ -32,7 +32,8 @@ function createMemoryPersistence(
 /** Keyed by user and catalog entry (D40, #88); MCP runs as the local user, so tests key by that username. */
 function createMemoryConnectionStore(): ConnectionStore {
   const values = new Map<string, string>();
-  const key = (user: string, catalogEntryId: string) => `${user} ${catalogEntryId}`;
+  const key = (user: string, catalogEntryId: string) =>
+    `${user} ${catalogEntryId}`;
   return {
     get: async (user, catalogEntryId) => values.get(key(user, catalogEntryId)),
     set: async (user, catalogEntryId, credential) => {
@@ -43,8 +44,14 @@ function createMemoryConnectionStore(): ConnectionStore {
     },
     removeAllForEntry: async (catalogEntryId) => {
       for (const existingKey of [...values.keys()]) {
-        if (existingKey.endsWith(` ${catalogEntryId}`)) values.delete(existingKey);
+        if (existingKey.endsWith(` ${catalogEntryId}`))
+          values.delete(existingKey);
       }
+    },
+    countForEntry: async (catalogEntryId) => {
+      return [...values.keys()].filter((existingKey) =>
+        existingKey.endsWith(` ${catalogEntryId}`),
+      ).length;
     },
   };
 }
@@ -122,6 +129,7 @@ describe("dashboard MCP server", () => {
         "add-integration",
         "edit-integration",
         "remove-integration",
+        "set-integration-retention-policy",
         "connect-integration",
         "disconnect-integration",
       ]),
@@ -232,7 +240,11 @@ describe("dashboard MCP server", () => {
         name: "assemble-card-template",
         arguments: {
           template: "__mcp-test-assembled",
-          jsonSchema: { type: "object", properties: {}, additionalProperties: false },
+          jsonSchema: {
+            type: "object",
+            properties: {},
+            additionalProperties: false,
+          },
           composition: { component: "Badge", props: {}, children: [] },
         },
       });
@@ -256,8 +268,16 @@ describe("dashboard MCP server", () => {
       name: "assemble-card-template",
       arguments: {
         template: "__mcp-test-invalid",
-        jsonSchema: { type: "object", properties: {}, additionalProperties: false },
-        composition: { component: "NotARealComponent", props: {}, children: [] },
+        jsonSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
+        composition: {
+          component: "NotARealComponent",
+          props: {},
+          children: [],
+        },
       },
     });
 
@@ -303,9 +323,9 @@ describe("integration connections through MCP", () => {
     });
 
     expect(result.isError).toBeFalsy();
-    await expect(
-      connections.get(localUsername, "team-calendar"),
-    ).resolves.toBe("secret-token");
+    await expect(connections.get(localUsername, "team-calendar")).resolves.toBe(
+      "secret-token",
+    );
   });
 
   test("a role with no integrations access still connects, unlike a real permission-gated mutation (D35)", async () => {
@@ -340,9 +360,9 @@ describe("integration connections through MCP", () => {
     });
 
     expect(result.isError).toBeFalsy();
-    await expect(
-      connections.get(localUsername, "team-calendar"),
-    ).resolves.toBe("secret-token");
+    await expect(connections.get(localUsername, "team-calendar")).resolves.toBe(
+      "secret-token",
+    );
   });
 
   test("disconnecting through MCP leaves no credential behind, and leaves the integration in place", async () => {

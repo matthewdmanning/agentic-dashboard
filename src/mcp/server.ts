@@ -67,7 +67,8 @@ export function createDashboardMcpServer(service: DashboardService) {
   server.registerTool(
     "read-dashboard",
     {
-      description: "Read the dashboard state allowed by the caller's role. Scope 'role' returns the caller's own permissions.",
+      description:
+        "Read the dashboard state allowed by the caller's role. Scope 'role' returns the caller's own permissions.",
       inputSchema: z.object({
         scope: readScopeSchema.default("all"),
       }),
@@ -238,6 +239,20 @@ export function createDashboardMcpServer(service: DashboardService) {
           integrationId,
         },
         "Integration removed",
+      ),
+  );
+
+  server.registerTool(
+    "set-integration-retention-policy",
+    {
+      description:
+        "Set how many days an unused dynamic integration is kept before it is automatically removed. Never applies to a default or recommended integration.",
+      inputSchema: z.object({ retentionDays: z.number().int().positive() }),
+    },
+    async ({ retentionDays }) =>
+      apply(
+        { type: "set-integration-retention-policy", retentionDays },
+        "Retention policy updated",
       ),
   );
 

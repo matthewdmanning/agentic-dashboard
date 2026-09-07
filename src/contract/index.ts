@@ -69,6 +69,10 @@ export const integrationSchema = z
     settings: z.record(z.string(), z.unknown()),
     origin: z.enum(["default", "recommended", "dynamic"]).optional(),
     state: z.enum(["available", "blocked"]).optional(),
+    // When a dynamic entry's last connection was removed (D40, #89) -- unset
+    // while connected, or for a default/recommended entry that never expires.
+    // Maintained by the retention reconciler, not a caller-authored value.
+    unusedSince: z.iso.datetime().optional(),
   })
   .strict()
   .superRefine(({ settings }, context) => {
@@ -212,6 +216,10 @@ export const dashboardConfigurationSchema = z
     // The shared card mapper store (D38): a query names one of these by
     // `name` rather than holding a copy.
     cardMappers: z.array(cardMapperSchema),
+    // How long a dynamic integration with zero connections is kept before
+    // the retention reconciler removes it (D40, #89). Never applies to a
+    // default or recommended entry.
+    integrationRetentionDays: z.number().int().positive(),
   })
   .strict();
 
@@ -328,6 +336,14 @@ const removeThemeMutationSchema = z
   })
   .strict();
 
+/** Changes the project-wide unused-integration retention period (D40, #89). Default is 30 days; only `integrations: write` may change it. */
+const setIntegrationRetentionPolicyMutationSchema = z
+  .object({
+    type: z.literal("set-integration-retention-policy"),
+    retentionDays: z.number().int().positive(),
+  })
+  .strict();
+
 /**
  * Adding is ungated by structure (D38): the resolved caller becomes the
  * mapper's `owner`, never a payload field, the same reasoning `addQuery`
@@ -404,6 +420,7 @@ export const mutationSchema = z.discriminatedUnion("type", [
   addIntegrationMutationSchema,
   editIntegrationMutationSchema,
   removeIntegrationMutationSchema,
+  setIntegrationRetentionPolicyMutationSchema,
   assembleCardTemplateMutationSchema,
   addCardMapperMutationSchema,
   editCardMapperMutationSchema,
@@ -438,6 +455,10 @@ export const mutationRequirements = {
   "add-integration": { category: "integrations", level: "write" },
   "edit-integration": { category: "integrations", level: "edit" },
   "remove-integration": { category: "integrations", level: "write" },
+  "set-integration-retention-policy": {
+    category: "integrations",
+    level: "write",
+  },
   "assemble-card-template": { category: "cards", level: "write" },
   // A floor only — real enforcement is ownership- and reference-conditional
   // and lives in `service` (D38): adding is always ungated, editing or
@@ -463,6 +484,7 @@ export const defaultDashboardConfiguration: DashboardConfiguration = {
     },
   ],
   cardMappers: [],
+  integrationRetentionDays: 30,
 };
 
 function assertUnique(values: string[], label: string): void {

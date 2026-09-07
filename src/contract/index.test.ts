@@ -40,6 +40,7 @@ const configuration: DashboardConfiguration = {
     },
   ],
   cardMappers: [],
+  integrationRetentionDays: 30,
 };
 
 describe("dashboard contract", () => {
@@ -112,15 +113,17 @@ describe("compositionNodeSchema", () => {
       component: "GridList",
       props: { "aria-label": "Do" },
       children: [
-        { component: "GridListItem", props: { textValue: "Fix outage" }, children: [] },
+        {
+          component: "GridListItem",
+          props: { textValue: "Fix outage" },
+          children: [],
+        },
       ],
     });
   });
 
   test("rejects a node missing the structural shape", () => {
-    expect(() =>
-      compositionNodeSchema.parse({ component: "Text" }),
-    ).toThrow();
+    expect(() => compositionNodeSchema.parse({ component: "Text" })).toThrow();
   });
 });
 
@@ -130,7 +133,11 @@ describe("assemble-card-template mutation", () => {
       mutationSchema.parse({
         type: "assemble-card-template",
         template: "eisenhower",
-        jsonSchema: { type: "object", properties: {}, additionalProperties: false },
+        jsonSchema: {
+          type: "object",
+          properties: {},
+          additionalProperties: false,
+        },
         composition: { component: "Flex", props: {}, children: [] },
       }),
     ).toMatchObject({ type: "assemble-card-template" });
@@ -202,9 +209,10 @@ describe("compileCardMapper", () => {
       },
     };
 
-    expect(
-      compileCardMapper(spec)({ summary: "Standup", temp: 72 }),
-    ).toEqual({ title: "Standup", temperature: "72" });
+    expect(compileCardMapper(spec)({ summary: "Standup", temp: 72 })).toEqual({
+      title: "Standup",
+      temperature: "72",
+    });
   });
 
   test("maps arrays and substitutes the item index in defaults", () => {

@@ -12,6 +12,7 @@ import {
   type IntegrationCatalogEntry,
 } from "../server/integrations/catalog";
 import { connectableTypesFromCatalog } from "../server/integrations/catalog-queries";
+import { reconcileIntegrationRetention } from "../server/integrations/retention";
 import {
   newQuerySchema,
   storedQuerySchema,
@@ -205,11 +206,7 @@ export interface DashboardService {
    * The one door onto another user's queries (D32, D35): an administrator may
    * delete one without ever reading its contents back through the service.
    */
-  removeUserQuery(
-    user: string,
-    id: string,
-    credential?: string,
-  ): Promise<void>;
+  removeUserQuery(user: string, id: string, credential?: string): Promise<void>;
 }
 
 export function createService(dependencies: Dependencies): DashboardService {
@@ -247,7 +244,9 @@ export function createService(dependencies: Dependencies): DashboardService {
         ),
       ),
     disconnect: (catalogEntryId, credential) =>
-      enqueue(() => disconnectIntegration(dependencies, catalogEntryId, credential)),
+      enqueue(() =>
+        disconnectIntegration(dependencies, catalogEntryId, credential),
+      ),
     connectableTypes: (credential) =>
       enqueue(() => readConnectableTypes(dependencies, credential)),
     addQuery: (query, credential) =>
@@ -365,7 +364,12 @@ async function readState<Scope extends ReadScope>(
     [Scope in ReadScope]: () => ReadScopes[Scope] | Promise<ReadScopes[Scope]>;
   } = {
     all: () =>
-      projectReadable(configuration, role, dependencies.roles ?? roles, integrations),
+      projectReadable(
+        configuration,
+        role,
+        dependencies.roles ?? roles,
+        integrations,
+      ),
     role: () => role,
     data: () => configuration.cards.map(({ id, state }) => ({ id, state })),
     cards: () => configuration.cards,
@@ -378,7 +382,8 @@ async function readState<Scope extends ReadScope>(
     roles: () => [...(dependencies.roles ?? roles)],
     // Ungated (D35): a user's own queries are theirs by structure, and there
     // is nothing of anyone else's in this file to filter out (D31).
-    queries: () => (caller.user ? requireQueryStore(dependencies).list(caller.user) : []),
+    queries: () =>
+      caller.user ? requireQueryStore(dependencies).list(caller.user) : [],
     cardMappers: () => configuration.cardMappers,
   };
 
@@ -407,7 +412,10 @@ function projectReadable(
 
   // ponytail: `data` adds nothing past `cards`; split them if a role ever needs
   // card state without the cards themselves.
-  if (role.permissions.cards !== "noAccess" || role.permissions.data !== "noAccess") {
+  if (
+    role.permissions.cards !== "noAccess" ||
+    role.permissions.data !== "noAccess"
+  ) {
     readable.cards = configuration.cards;
   }
   // Card mappers ride under `cards` (D20), not `data` — card state and card
@@ -422,8 +430,10 @@ function projectReadable(
   }
   if (role.permissions.integrations !== "noAccess") {
     readable.integrations = integrations;
+    readable.integrationRetentionDays = configuration.integrationRetentionDays;
   }
-  if (role.permissions.roles !== "noAccess") readable.roles = [...availableRoles];
+  if (role.permissions.roles !== "noAccess")
+    readable.roles = [...availableRoles];
 
   if (Object.keys(readable).length === 0 && !allowEmpty) {
     throw new ServiceFailure("permission-denied", "Permission denied: read");
@@ -467,7 +477,10 @@ async function applyMutations(
     // Editing or removing needs the mapper's current owner and whether any
     // private query still references it (D38) — both runtime facts
     // `mutationRequirements`'s static table can't express.
-    if (mutation.type === "edit-card-mapper" || mutation.type === "remove-card-mapper") {
+    if (
+      mutation.type === "edit-card-mapper" ||
+      mutation.type === "remove-card-mapper"
+    ) {
       const existing = configuration.cardMappers.find(
         ({ name }) => name === mutation.name,
       );
@@ -523,16 +536,25 @@ async function applyMutations(
   try {
     const candidate = structuredClone({ ...configuration, integrations });
     for (const mutation of mutations) {
-      applyMutation(candidate, mutation, dependencies.catalog !== undefined, caller.user);
+      applyMutation(
+        candidate,
+        mutation,
+        dependencies.catalog !== undefined,
+        caller.user,
+      );
     }
     next = parseDashboardConfiguration(candidate);
     await dependencies.persistence.write(
-      dependencies.catalog ? { ...next, integrations: configuration.integrations } : next,
+      dependencies.catalog
+        ? { ...next, integrations: configuration.integrations }
+        : next,
     );
     if (
       dependencies.catalog &&
       mutations.some(({ type }) =>
-        ["add-integration", "edit-integration", "remove-integration"].includes(type),
+        ["add-integration", "edit-integration", "remove-integration"].includes(
+          type,
+        ),
       )
     ) {
       await dependencies.catalog.write(
@@ -620,6 +642,13 @@ async function connectIntegration(
     catalogEntryId,
     connectionCredential,
   );
+  // A connection just appeared, which cancels any unused clock the entry was
+  // running (#89) — reconciled here rather than waiting for the next
+  // unrelated connection change to notice.
+  await reconcileRetention(
+    dependencies,
+    configuration.integrationRetentionDays,
+  );
 }
 
 async function disconnectIntegration(
@@ -631,6 +660,25 @@ async function disconnectIntegration(
   // credential and leaves the shared catalog entry untouched (D40).
   const user = await requireOwner(dependencies, credential, "a connection");
   await requireConnectionStore(dependencies).remove(user, catalogEntryId);
+  const configuration = await readConfiguration(dependencies.persistence);
+  // This may have been the entry's last connection — starts its unused
+  // clock, or removes it outright if a prior clock already ran out (#89).
+  await reconcileRetention(
+    dependencies,
+    configuration.integrationRetentionDays,
+  );
+}
+
+/** No-op when this build has no catalog or no connection store — retention only applies to a catalog-backed deployment (#89). */
+async function reconcileRetention(
+  dependencies: Dependencies,
+  retentionDays: number,
+): Promise<void> {
+  if (!dependencies.catalog || !dependencies.connections) return;
+  await reconcileIntegrationRetention(
+    { catalog: dependencies.catalog, connections: dependencies.connections },
+    retentionDays,
+  );
 }
 
 async function readConnectableTypes(
@@ -859,6 +907,9 @@ function applyMutation(
     case "set-font-scale":
       configuration.fontScale = mutation.fontScale;
       return;
+    case "set-integration-retention-policy":
+      configuration.integrationRetentionDays = mutation.retentionDays;
+      return;
     case "add-integration":
       addById(
         configuration.integrations,
@@ -965,7 +1016,10 @@ async function applyAssembledCardTemplates(
         title: entry.title,
         sourceFile: entry.sourceFile,
         clientSourcePath: `src/client/cards/${entry.sourceFile}`,
-        source: await readFile(join(cardTemplatesDir, entry.sourceFile), "utf8"),
+        source: await readFile(
+          join(cardTemplatesDir, entry.sourceFile),
+          "utf8",
+        ),
         jsonSchema: entry.jsonSchema,
       })),
   );
@@ -989,7 +1043,9 @@ async function applyAssembledCardTemplates(
     { manifestPath, clientBuildPath },
   );
   if (!result.ok) {
-    const templates = mutations.map(({ template }) => `'${template}'`).join(", ");
+    const templates = mutations
+      .map(({ template }) => `'${template}'`)
+      .join(", ");
     throw new ServiceFailure(
       "invalid-card-template",
       `Card template(s) ${templates} failed to build (${result.stage}): ${result.message}`,
@@ -1001,7 +1057,10 @@ async function applyAssembledCardTemplates(
       await mkdir(cardTemplatesDir, { recursive: true });
       await Promise.all(
         assembledCandidates.map((candidate) =>
-          writeFile(join(cardTemplatesDir, candidate.sourceFile), candidate.source),
+          writeFile(
+            join(cardTemplatesDir, candidate.sourceFile),
+            candidate.source,
+          ),
         ),
       );
       await result.prepared.commit();
@@ -1074,7 +1133,8 @@ function requireByName<T extends { name: string }>(
   label: string,
 ): T {
   const value = values.find((candidate) => candidate.name === name);
-  if (!value) throw new ServiceFailure("unknown-id", `Unknown ${label}: ${name}`);
+  if (!value)
+    throw new ServiceFailure("unknown-id", `Unknown ${label}: ${name}`);
   return value;
 }
 

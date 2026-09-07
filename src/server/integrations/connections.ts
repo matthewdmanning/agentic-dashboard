@@ -17,6 +17,8 @@ export interface ConnectionStore {
   remove(user: string, catalogEntryId: string): Promise<void>;
   /** Destroys every user's connection to one catalog entry (D40) — what removing the entry itself must do, not just one caller's disconnect. */
   removeAllForEntry(catalogEntryId: string): Promise<void>;
+  /** How many users currently hold a connection to one catalog entry — how the retention reconciler (#89) detects a dynamic entry going unused. */
+  countForEntry(catalogEntryId: string): Promise<number>;
 }
 
 /**
@@ -43,7 +45,10 @@ type StoredConnection = z.infer<typeof storedConnectionSchema>;
  * another's, and one sealed for one catalog entry fails to open under a
  * different entry, exactly like a wrong owner fails `SecretBox.open` today.
  */
-export function connectionIdentity(user: string, catalogEntryId: string): string {
+export function connectionIdentity(
+  user: string,
+  catalogEntryId: string,
+): string {
   return JSON.stringify([user, catalogEntryId]);
 }
 
@@ -134,6 +139,12 @@ export function createEncryptedConnectionStore(
       );
       if (remaining.length === connections.length) return;
       await writeJson(path, remaining);
+    },
+    async countForEntry(catalogEntryId) {
+      const connections = await readConnections(path);
+      return connections.filter(
+        (connection) => connection.catalogEntryId === catalogEntryId,
+      ).length;
     },
   };
 }

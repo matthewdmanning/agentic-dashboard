@@ -36,7 +36,8 @@ function createMemoryPersistence(
 /** Keyed by user and catalog entry (D40, #88), unlike the single-key credential store it replaced. */
 function createMemoryConnectionStore(): ConnectionStore {
   const values = new Map<string, string>();
-  const key = (user: string, catalogEntryId: string) => `${user} ${catalogEntryId}`;
+  const key = (user: string, catalogEntryId: string) =>
+    `${user} ${catalogEntryId}`;
   return {
     get: async (user, catalogEntryId) => values.get(key(user, catalogEntryId)),
     set: async (user, catalogEntryId, credential) => {
@@ -47,9 +48,14 @@ function createMemoryConnectionStore(): ConnectionStore {
     },
     removeAllForEntry: async (catalogEntryId) => {
       for (const existingKey of [...values.keys()]) {
-        if (existingKey.endsWith(` ${catalogEntryId}`)) values.delete(existingKey);
+        if (existingKey.endsWith(` ${catalogEntryId}`))
+          values.delete(existingKey);
       }
     },
+    countForEntry: async (catalogEntryId) =>
+      [...values.keys()].filter((existingKey) =>
+        existingKey.endsWith(` ${catalogEntryId}`),
+      ).length,
   };
 }
 
@@ -113,6 +119,8 @@ describe("dashboard service HTTP transport", () => {
       themes: defaultDashboardConfiguration.themes,
       fontScale: defaultDashboardConfiguration.fontScale,
       integrations: defaultDashboardConfiguration.integrations,
+      integrationRetentionDays:
+        defaultDashboardConfiguration.integrationRetentionDays,
       roles,
     });
   });
@@ -141,15 +149,15 @@ describe("dashboard service HTTP transport", () => {
       new Request("http://dashboard/api/dashboard-configuration?scope=roles"),
       createTestService(defaultDashboardConfiguration, {
         localUser: {
-        name: "localUser",
-        permissions: {
-          data: "write",
-          cards: "write",
-          presentation: "write",
-          integrations: "write",
-          roles: "noAccess",
+          name: "localUser",
+          permissions: {
+            data: "write",
+            cards: "write",
+            presentation: "write",
+            integrations: "write",
+            roles: "noAccess",
+          },
         },
-      },
       }),
     );
 
@@ -306,8 +314,18 @@ describe("integration refresh endpoint", () => {
       ],
       cards: [
         ...defaultDashboardConfiguration.cards,
-        { id: "card-a", title: "A", template: "calendar", state: { events: [] } },
-        { id: "card-b", title: "B", template: "calendar", state: { events: [] } },
+        {
+          id: "card-a",
+          title: "A",
+          template: "calendar",
+          state: { events: [] },
+        },
+        {
+          id: "card-b",
+          title: "B",
+          template: "calendar",
+          state: { events: [] },
+        },
       ],
     });
     await service.apply([
