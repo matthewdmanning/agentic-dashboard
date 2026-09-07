@@ -1,4 +1,11 @@
-import type { PartialUserAppearance, UserAppearance } from "../contract";
+import * as z from "zod/v4";
+
+import {
+  namedPresetSchema,
+  type NamedPreset,
+  type PartialUserAppearance,
+  type UserAppearance,
+} from "../contract";
 import { authorized, failureFrom } from "./request";
 
 /** A user's own appearance preference plus its derived stylesheet (D26, #94). */
@@ -31,4 +38,33 @@ export async function setAppearance(
     throw await failureFrom(response, "Could not save appearance");
   }
   return (await response.json()) as AppearanceView;
+}
+
+/**
+ * Reads a pasted token set as one of the caller's own presets (#96). A preset
+ * is a complete set -- both token blocks, a radius, a theme mapping, and the
+ * base rules -- so this validates against the same `namedPresetSchema` the
+ * service and the MCP tool accept, and reports what is missing rather than
+ * letting a partial set reach the store and be rejected there.
+ */
+export function parsePersonalPreset(id: string, tokenSet: string): NamedPreset {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(tokenSet);
+  } catch {
+    throw new Error("Preset is not valid JSON");
+  }
+  const result = namedPresetSchema.safeParse({ id, preset: parsed });
+  if (!result.success) {
+    throw new Error(`Not a complete preset: ${z.prettifyError(result.error)}`);
+  }
+  return result.data;
+}
+
+/** The caller's own preset list with `preset` added, or replacing the entry that already had its id (#96) -- the same upsert `add-personal-preset` performs. */
+export function withPersonalPreset(
+  presets: readonly NamedPreset[],
+  preset: NamedPreset,
+): NamedPreset[] {
+  return [...presets.filter(({ id }) => id !== preset.id), preset];
 }

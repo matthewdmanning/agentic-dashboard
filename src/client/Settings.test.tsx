@@ -9,6 +9,7 @@ import {
   type Mutation,
   type Preset,
 } from "../contract";
+import { parsePersonalPreset, withPersonalPreset } from "./appearance-client";
 import { Settings } from "./Settings";
 
 function samplePreset(overrides: Partial<Preset> = {}): Preset {
@@ -312,5 +313,52 @@ describe("Settings contract", () => {
       "Appearance",
     );
     expect(selected).toContain("Clear preset selection");
+  });
+});
+
+describe("personal presets (#96)", () => {
+  test("offers a control to add one, ungated by any permission", () => {
+    const appearance = fieldset(render({}), "Appearance");
+
+    expect(appearance).toContain("Add a preset");
+    expect(appearance).toContain("Preset name");
+    expect(appearance).toContain("Save preset");
+  });
+
+  test("reads a complete token set as the caller's own preset", () => {
+    const preset = samplePreset();
+
+    expect(parsePersonalPreset("my-theme", JSON.stringify(preset))).toEqual({
+      id: "my-theme",
+      preset,
+    });
+  });
+
+  test("rejects a partial token set rather than storing it", () => {
+    const { dark: _dark, ...partial } = samplePreset();
+
+    expect(() =>
+      parsePersonalPreset("my-theme", JSON.stringify(partial)),
+    ).toThrow(/Not a complete preset/);
+  });
+
+  test("rejects text that is not JSON at all", () => {
+    expect(() => parsePersonalPreset("my-theme", "oklch(0.5 0 0)")).toThrow(
+      /not valid JSON/,
+    );
+  });
+
+  test("reusing a name replaces that preset rather than adding a second", () => {
+    const first = { id: "my-theme", preset: samplePreset() };
+    const replacement = {
+      id: "my-theme",
+      preset: samplePreset({ radius: "1rem" }),
+    };
+    const other = { id: "other", preset: samplePreset() };
+
+    expect(withPersonalPreset([first, other], replacement)).toEqual([
+      other,
+      replacement,
+    ]);
   });
 });

@@ -39,7 +39,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AppearanceView } from "./appearance-client";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  parsePersonalPreset,
+  withPersonalPreset,
+  type AppearanceView,
+} from "./appearance-client";
 import {
   settingsMutations,
   type DashboardSettings,
@@ -158,9 +163,12 @@ export function Settings({
     credential: "",
   });
   const [error, setError] = useState<string>();
+  const [draftPreset, setDraftPreset] = useState({ id: "", tokenSet: "" });
   const typesetSizeId = useId();
   const connectionNameId = useId();
   const credentialId = useId();
+  const presetNameId = useId();
+  const presetTokensId = useId();
 
   /** Every appearance control applies immediately, like `onConnect` — never batched into `onSave`'s mutation list. */
   function updateAppearance(update: PartialUserAppearance) {
@@ -169,6 +177,29 @@ export function Settings({
         reason instanceof Error ? reason.message : "Could not save appearance",
       );
     });
+  }
+
+  /**
+   * Adds the drafted preset, or replaces the one already holding its name
+   * (#96). A preset is a whole token set rather than a handful of fields, so
+   * it is pasted rather than assembled from sixty-odd colour inputs; the
+   * contract decides whether what arrived is complete.
+   */
+  function savePersonalPreset() {
+    setError(undefined);
+    let preset;
+    try {
+      preset = parsePersonalPreset(draftPreset.id, draftPreset.tokenSet);
+    } catch (reason) {
+      setError(
+        reason instanceof Error ? reason.message : "Could not read preset",
+      );
+      return;
+    }
+    updateAppearance({
+      personalPresets: withPersonalPreset(appearance.personalPresets, preset),
+    });
+    setDraftPreset({ id: "", tokenSet: "" });
   }
 
   function submit(event: FormEvent) {
@@ -396,6 +427,55 @@ export function Settings({
               </Button>
             </Field>
           ) : null}
+
+          {/* Adding a preset is the user's own, ungated like every other control here (D35). Reusing a name replaces that preset. */}
+          <FieldGroup>
+            <h3 className="text-sm font-medium">Add a preset</h3>
+            <Field>
+              <FieldLabel htmlFor={presetNameId}>Preset name</FieldLabel>
+              <Input
+                id={presetNameId}
+                value={draftPreset.id}
+                onChange={(event) =>
+                  setDraftPreset({
+                    ...draftPreset,
+                    id: event.currentTarget.value,
+                  })
+                }
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor={presetTokensId}>Token set</FieldLabel>
+              <Textarea
+                id={presetTokensId}
+                rows={6}
+                value={draftPreset.tokenSet}
+                onChange={(event) =>
+                  setDraftPreset({
+                    ...draftPreset,
+                    tokenSet: event.currentTarget.value,
+                  })
+                }
+              />
+              <FieldDescription>
+                A complete token set: a light and a dark block naming every
+                token, a radius, the theme mapping, and the base rules.
+              </FieldDescription>
+            </Field>
+            <Field orientation="horizontal">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={
+                  draftPreset.id === "" || draftPreset.tokenSet.trim() === ""
+                }
+                onClick={savePersonalPreset}
+              >
+                Save preset
+              </Button>
+            </Field>
+          </FieldGroup>
         </FieldGroup>
       </FieldSet>
 
