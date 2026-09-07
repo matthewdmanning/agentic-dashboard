@@ -39,6 +39,14 @@ export interface KeyRotationResult {
  * anymore; a record that fails to re-encrypt simply keeps its old key
  * referenced, which keeps that key alive for the next attempt rather than
  * stranding the record.
+ *
+ * The ring is persisted twice, and the first write is the one that matters:
+ * the new key must survive a crash before any record is sealed under it. A
+ * single write at the end of the pass would mean a process killed midway
+ * through re-encryption had already written records naming a key that only
+ * ever existed in memory — permanently unopenable. Writing first is the
+ * recoverable order: a crash then leaves a persisted key that nothing
+ * references yet, which the next startup's pass simply prunes.
  */
 export async function rotateSecretKeyIfDue(
   paths: KeyRotationPaths,
@@ -54,6 +62,7 @@ export async function rotateSecretKeyIfDue(
   const newKey = randomBytes(32);
   const newKeyId = deriveKeyId(newKey);
   const rotatedRing = withNewCurrentKey(ring, newKeyId, newKey, now);
+  await writeSecretKeyRingFile(paths.keyRingPath, rotatedRing);
   const secretBox = createSecretBox(rotatedRing);
 
   const [connectionResult, queryResult] = await Promise.all([

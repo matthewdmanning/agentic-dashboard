@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
@@ -119,5 +119,37 @@ describe("rotateSecretKeyIfDue (#91)", () => {
     expect(rawConnections[0].sealed.ciphertext).toBe(
       before[0].sealed.ciphertext,
     );
+  });
+
+  test("a pass that dies partway through leaves the new key persisted, so anything already re-encrypted is still openable", async () => {
+    const paths = await tempPaths();
+    const initialRing = await resolveSecretKeyRing(paths.keyRingPath);
+    const connections = createEncryptedConnectionStore(
+      paths.connectionsPath,
+      createSecretBox(initialRing),
+    );
+    await connections.set("alice", "team-calendar", "alice-secret-token");
+    // A query store that cannot be read at all, so the pass throws partway
+    // through instead of reaching its final ring write -- standing in for the
+    // process being killed mid-rotation.
+    await mkdir(paths.queriesPath, { recursive: true });
+
+    const due = new Date(
+      initialRing.currentKeyCreatedAt.getTime() + 91 * 24 * 60 * 60 * 1000,
+    );
+    await expect(rotateSecretKeyIfDue(paths, 90, due)).rejects.toThrow();
+
+    // The new key reached disk before any record could be sealed under it, so
+    // a restart resolves a ring that still opens every connection -- whether
+    // or not that connection had already been re-encrypted.
+    const persisted = await resolveSecretKeyRing(paths.keyRingPath);
+    expect(persisted.currentKeyId).not.toBe(initialRing.currentKeyId);
+    expect(persisted.keys.has(initialRing.currentKeyId)).toBe(true);
+    await expect(
+      createEncryptedConnectionStore(
+        paths.connectionsPath,
+        createSecretBox(persisted),
+      ).get("alice", "team-calendar"),
+    ).resolves.toBe("alice-secret-token");
   });
 });
