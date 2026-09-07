@@ -10,6 +10,7 @@ import {
   type CardMapperSpec,
   type DashboardConfiguration,
   type Mutation,
+  type NamedPreset,
   type Role,
 } from "../contract";
 import {
@@ -315,6 +316,7 @@ describe("dashboard service", () => {
       cardMappers: testConfiguration.cardMappers,
       dashboard: testConfiguration.dashboard,
       themes: testConfiguration.themes,
+      presets: testConfiguration.presets,
       integrations: testConfiguration.integrations,
       integrationRetentionDays: testConfiguration.integrationRetentionDays,
       roles,
@@ -2068,5 +2070,208 @@ describe("user appearance (#94, #95)", () => {
     await expect(service.read("presentation")).resolves.not.toHaveProperty(
       "fontScale",
     );
+  });
+});
+
+describe("presets (#96)", () => {
+  function tempAppearanceStore() {
+    return mkdtemp(join(tmpdir(), "appearance-")).then((dir) =>
+      createFileAppearanceStore(join(dir, "appearance.json")),
+    );
+  }
+
+  function twoUserAuthStore() {
+    return {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : undefined,
+    };
+  }
+
+  function samplePreset(fill: string): NamedPreset["preset"] {
+    const light: Record<string, string> = {};
+    const dark: Record<string, string> = {};
+    for (const token of [
+      "background",
+      "foreground",
+      "card",
+      "card-foreground",
+      "popover",
+      "popover-foreground",
+      "primary",
+      "primary-foreground",
+      "secondary",
+      "secondary-foreground",
+      "muted",
+      "muted-foreground",
+      "accent",
+      "accent-foreground",
+      "destructive",
+      "border",
+      "input",
+      "ring",
+      "chart-1",
+      "chart-2",
+      "chart-3",
+      "chart-4",
+      "chart-5",
+      "sidebar",
+      "sidebar-foreground",
+      "sidebar-primary",
+      "sidebar-primary-foreground",
+      "sidebar-accent",
+      "sidebar-accent-foreground",
+      "sidebar-border",
+      "sidebar-ring",
+    ]) {
+      light[token] = fill;
+      dark[token] = fill;
+    }
+    return {
+      themeMapping: { "--color-background": "var(--background)" },
+      light: light as never,
+      dark: dark as never,
+      radius: "0.5rem",
+      baseRules: "default",
+    };
+  }
+
+  test("add-preset requires presentation: write", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "write",
+        presentation: "edit",
+        integrations: "write",
+        roles: "noAccess",
+      }),
+    });
+
+    await expect(
+      service.apply([
+        {
+          type: "add-preset",
+          preset: { id: "midnight", preset: samplePreset("oklch(0.1 0 0)") },
+        },
+      ]),
+    ).rejects.toThrow("presentation: write");
+  });
+
+  test("every user can select a shared preset, which overrides their base colour (D26, D27)", async () => {
+    const persistence = createMemoryPersistence();
+    const service = createService({
+      persistence,
+      appearance: await tempAppearanceStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.apply([
+      {
+        type: "add-preset",
+        preset: { id: "midnight", preset: samplePreset("oklch(0.1 0 0)") },
+      },
+    ]);
+    const beforeSelect = await service.readAppearance("alice-token");
+    await service.setAppearance(
+      { selectedPreset: { source: "server", id: "midnight" } },
+      "alice-token",
+    );
+    const afterSelect = await service.readAppearance("alice-token");
+
+    expect(afterSelect.css).toContain("oklch(0.1 0 0)");
+    expect(afterSelect.css).not.toBe(beforeSelect.css);
+    expect(afterSelect.css).toContain(".dark {");
+  });
+
+  test("one user cannot read or change another's personal preset (D35)", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance: await tempAppearanceStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.setAppearance(
+      {
+        personalPresets: [
+          { id: "alice-only", preset: samplePreset("oklch(0.2 0 0)") },
+        ],
+      },
+      "alice-token",
+    );
+
+    const bob = await service.readAppearance("bob-token");
+    expect(bob.personalPresets).toEqual([]);
+  });
+
+  test("a complete personal preset, once selected, changes only its owner's rendered appearance", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance: await tempAppearanceStore(),
+      authStore: twoUserAuthStore(),
+    });
+
+    await service.setAppearance(
+      {
+        personalPresets: [
+          { id: "mine", preset: samplePreset("oklch(0.3 0 0)") },
+        ],
+        selectedPreset: { source: "personal", id: "mine" },
+      },
+      "alice-token",
+    );
+
+    const alice = await service.readAppearance("alice-token");
+    const bob = await service.readAppearance("bob-token");
+    expect(alice.css).toContain("oklch(0.3 0 0)");
+    expect(bob.css).not.toContain("oklch(0.3 0 0)");
+  });
+
+  test("removing a selected server preset falls back to base colour instead of failing (#96)", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance: await tempAppearanceStore(),
+    });
+
+    await service.apply([
+      {
+        type: "add-preset",
+        preset: { id: "midnight", preset: samplePreset("oklch(0.1 0 0)") },
+      },
+    ]);
+    await service.setAppearance({
+      selectedPreset: { source: "server", id: "midnight" },
+    });
+    await service.apply([{ type: "remove-preset", presetId: "midnight" }]);
+
+    const appearance = await service.readAppearance();
+    expect(appearance.css).not.toContain("oklch(0.1 0 0)");
+    expect(appearance.css).toContain("--background");
+  });
+
+  test("clearing a selected preset reverts to the base-colour path", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(),
+      appearance: await tempAppearanceStore(),
+    });
+
+    await service.apply([
+      {
+        type: "add-preset",
+        preset: { id: "midnight", preset: samplePreset("oklch(0.1 0 0)") },
+      },
+    ]);
+    await service.setAppearance({
+      selectedPreset: { source: "server", id: "midnight" },
+      baseColour: "slate",
+    });
+    await service.setAppearance({ selectedPreset: null });
+
+    const appearance = await service.readAppearance();
+    expect(appearance.selectedPreset).toBeUndefined();
+    expect(appearance.css).not.toContain("oklch(0.1 0 0)");
   });
 });

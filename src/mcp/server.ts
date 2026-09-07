@@ -9,9 +9,11 @@ import {
   integrationSchema,
   menuAccentSchema,
   menuColourSchema,
+  namedPresetSchema,
   themeSchema,
   typesetSchema,
   type Mutation,
+  type NamedPreset,
 } from "../contract";
 import { ServiceFailure, type DashboardService } from "../service";
 
@@ -201,6 +203,27 @@ export function createDashboardMcpServer(service: DashboardService) {
   );
 
   server.registerTool(
+    "add-preset",
+    {
+      description:
+        "Add a server-listed preset (a complete token set: theme mapping, light and dark blocks, radius, base rules) visible to every user.",
+      inputSchema: z.object({ preset: namedPresetSchema }),
+    },
+    async ({ preset }) => apply({ type: "add-preset", preset }, "Preset added"),
+  );
+
+  server.registerTool(
+    "remove-preset",
+    {
+      description:
+        "Delete a server-listed preset. Any user who had it selected falls back to their base colour.",
+      inputSchema: z.object({ presetId: z.string() }),
+    },
+    async ({ presetId }) =>
+      apply({ type: "remove-preset", presetId }, "Preset removed"),
+  );
+
+  server.registerTool(
     "add-integration",
     {
       description: "Add an integration.",
@@ -370,6 +393,86 @@ export function createDashboardMcpServer(service: DashboardService) {
           ...(menuAccent ? { menuAccent } : {}),
         });
         return "Menu appearance updated";
+      }),
+  );
+
+  /**
+   * Personal-preset add/update/remove (#96) go through `readAppearance` then
+   * `setAppearance`, the same pair the HTTP appearance endpoint composes
+   * from — there is no dedicated service method. ponytail: two round trips
+   * on the same global operation queue, not one atomic update; a known
+   * ceiling for the same user editing their own list from two places at
+   * once, not for concurrent users (each keyed by their own identity).
+   * Upgrade path: a dedicated `DashboardService` method if that ever bites.
+   */
+  function upsertPersonalPreset(preset: NamedPreset) {
+    return reply(async () => {
+      const current = await service.readAppearance();
+      const personalPresets = [
+        ...current.personalPresets.filter(({ id }) => id !== preset.id),
+        preset,
+      ];
+      await service.setAppearance({ personalPresets });
+      return "Personal preset saved";
+    });
+  }
+
+  server.registerTool(
+    "add-personal-preset",
+    {
+      description:
+        "Add or update one of your own presets (a complete token set). Ungated — never affects another user or the server-listed presets.",
+      inputSchema: z.object({ preset: namedPresetSchema }),
+    },
+    async ({ preset }) => upsertPersonalPreset(preset),
+  );
+
+  server.registerTool(
+    "remove-personal-preset",
+    {
+      description: "Remove one of your own presets by id.",
+      inputSchema: z.object({ id: z.string() }),
+    },
+    async ({ id }) =>
+      reply(async () => {
+        const current = await service.readAppearance();
+        await service.setAppearance({
+          personalPresets: current.personalPresets.filter(
+            (preset) => preset.id !== id,
+          ),
+        });
+        return "Personal preset removed";
+      }),
+  );
+
+  server.registerTool(
+    "select-preset",
+    {
+      description:
+        "Select a preset by id — a server-listed one, or one of your own. Overrides your base colour until cleared. Applies only to you.",
+      inputSchema: z.object({
+        source: z.enum(["server", "personal"]),
+        id: z.string(),
+      }),
+    },
+    async ({ source, id }) =>
+      reply(async () => {
+        await service.setAppearance({ selectedPreset: { source, id } });
+        return "Preset selected";
+      }),
+  );
+
+  server.registerTool(
+    "clear-preset-selection",
+    {
+      description:
+        "Clear your selected preset. Your base colour governs again.",
+      inputSchema: z.object({}),
+    },
+    async () =>
+      reply(async () => {
+        await service.setAppearance({ selectedPreset: null });
+        return "Preset selection cleared";
       }),
   );
 

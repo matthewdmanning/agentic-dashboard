@@ -126,6 +126,7 @@ describe("dashboard service HTTP transport", () => {
       cardMappers: defaultDashboardConfiguration.cardMappers,
       dashboard: defaultDashboardConfiguration.dashboard,
       themes: defaultDashboardConfiguration.themes,
+      presets: defaultDashboardConfiguration.presets,
       integrations: defaultDashboardConfiguration.integrations,
       integrationRetentionDays:
         defaultDashboardConfiguration.integrationRetentionDays,

@@ -5,9 +5,25 @@ import { describe, expect, test } from "vitest";
 import {
   defaultDashboardConfiguration,
   defaultUserAppearance,
+  presetTokens,
   type Mutation,
+  type Preset,
 } from "../contract";
 import { Settings } from "./Settings";
+
+function samplePreset(overrides: Partial<Preset> = {}): Preset {
+  const block = Object.fromEntries(
+    presetTokens.map((token) => [token, "oklch(0.5 0 0)"]),
+  ) as Preset["light"];
+  return {
+    themeMapping: { "--color-background": "var(--background)" },
+    light: block,
+    dark: block,
+    radius: "0.5rem",
+    baseRules: "default",
+    ...overrides,
+  };
+}
 
 function render(
   dashboard: Parameters<typeof Settings>[0]["dashboard"],
@@ -232,5 +248,52 @@ describe("Settings contract", () => {
     expect(appearance).toContain('value="inverted" selected');
     expect(appearance).toContain('value="bold" selected');
     expect(appearance).not.toContain("Font scale");
+  });
+
+  test("lists server presets with a select control, ungated by any permission (#96)", () => {
+    const appearance = fieldset(
+      render(
+        { presets: [{ id: "midnight", preset: samplePreset() }] },
+        undefined,
+        [],
+        [],
+        { ...defaultUserAppearance, css: "" },
+      ),
+      "Appearance",
+    );
+
+    expect(appearance).toContain("Server presets");
+    expect(appearance).toContain("midnight");
+    expect(appearance).toContain("Select");
+  });
+
+  test("lists the caller's own presets with select and remove controls (#96)", () => {
+    const appearance = fieldset(
+      render({}, undefined, [], [], {
+        ...defaultUserAppearance,
+        personalPresets: [{ id: "my-theme", preset: samplePreset() }],
+        css: "",
+      }),
+      "Appearance",
+    );
+
+    expect(appearance).toContain("Your presets");
+    expect(appearance).toContain("my-theme");
+    expect(appearance).toContain("Remove");
+  });
+
+  test("shows a clear-selection control only once a preset is selected (#96)", () => {
+    const unselected = fieldset(render({}), "Appearance");
+    expect(unselected).not.toContain("Clear preset selection");
+
+    const selected = fieldset(
+      render({}, undefined, [], [], {
+        ...defaultUserAppearance,
+        selectedPreset: { source: "server", id: "midnight" },
+        css: "",
+      }),
+      "Appearance",
+    );
+    expect(selected).toContain("Clear preset selection");
   });
 });

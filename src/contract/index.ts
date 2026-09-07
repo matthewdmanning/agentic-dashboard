@@ -180,6 +180,113 @@ export const menuAccentSchema = z.enum(menuAccents);
 export type MenuAccent = z.infer<typeof menuAccentSchema>;
 
 /**
+ * A CSS custom-property value, closed enough to reject arbitrary CSS
+ * smuggled in through a token (D26, D27, #96) — a colour function, `var()`,
+ * `calc()`, a bare number, or a length, never a selector, a declaration
+ * terminator, or a comment.
+ */
+const cssTokenValueSchema = z
+  .string()
+  .min(1)
+  .max(200)
+  .regex(/^[a-zA-Z0-9%.,()#\s/-]+$/, "Not a plain CSS value");
+
+/** The complete semantic-token set a card template's styles ultimately reference (D26) — the same keys `styles.css` already declares as CSS custom properties. */
+export const presetTokens = [
+  "background",
+  "foreground",
+  "card",
+  "card-foreground",
+  "popover",
+  "popover-foreground",
+  "primary",
+  "primary-foreground",
+  "secondary",
+  "secondary-foreground",
+  "muted",
+  "muted-foreground",
+  "accent",
+  "accent-foreground",
+  "destructive",
+  "border",
+  "input",
+  "ring",
+  "chart-1",
+  "chart-2",
+  "chart-3",
+  "chart-4",
+  "chart-5",
+  "sidebar",
+  "sidebar-foreground",
+  "sidebar-primary",
+  "sidebar-primary-foreground",
+  "sidebar-accent",
+  "sidebar-accent-foreground",
+  "sidebar-border",
+  "sidebar-ring",
+] as const;
+
+const tokenBlockSchema = z
+  .object(
+    Object.fromEntries(
+      presetTokens.map((token) => [token, cssTokenValueSchema]),
+    ),
+  )
+  .strict();
+
+export type TokenBlock = z.infer<typeof tokenBlockSchema>;
+
+/**
+ * shadcn's one supported base-rules bundle (#96) — closed to a single named
+ * identifier rather than raw CSS text, so a preset opts into the same
+ * Tailwind reset every theme in this project uses instead of authoring its
+ * own `@layer base`.
+ */
+export const baseRulesSchema = z.literal("default");
+
+/**
+ * One complete token set in the shape of `globals-example.css` (D27, #96):
+ * the inline theme mapping, light and dark token blocks, the shared
+ * `--radius`, and base rules. Never a partial override — every field is
+ * required, so a preset either replaces the whole rendered appearance or is
+ * rejected outright. `themeMapping` and `baseRules` travel with the preset
+ * for shape-completeness against that format; generating a user's runtime
+ * stylesheet only needs `light`, `dark`, and `radius` (D26), since the
+ * mapping and reset are already compiled once into `styles.css`.
+ */
+export const presetSchema = z
+  .object({
+    themeMapping: z.record(z.string().min(1), cssTokenValueSchema),
+    light: tokenBlockSchema,
+    dark: tokenBlockSchema,
+    radius: cssTokenValueSchema,
+    baseRules: baseRulesSchema,
+  })
+  .strict();
+
+export type Preset = z.infer<typeof presetSchema>;
+
+/** A preset stored under a name — a server-listed preset added by `presentation: write` (D27, #96), or one entry in a user's own personal list. */
+export const namedPresetSchema = z
+  .object({
+    id: z.string().min(1),
+    preset: presetSchema,
+  })
+  .strict();
+
+export type NamedPreset = z.infer<typeof namedPresetSchema>;
+
+/** Which preset a user has applied (#96) — `undefined` means none, and the base-colour path governs instead. */
+export const selectedPresetSchema = z
+  .object({
+    source: z.enum(["server", "personal"]),
+    id: z.string().min(1),
+  })
+  .strict();
+
+export type SelectedPreset = z.infer<typeof selectedPresetSchema>;
+
+/**
  * A user's own appearance choices (D26, D27, D33-D35): theirs by structure,
  * never gated by the permission matrix, and closed to shadcn's own
  * vocabulary rather than arbitrary CSS.
@@ -190,13 +297,27 @@ export const userAppearanceSchema = z
     typeset: typesetSchema,
     menuColour: menuColourSchema,
     menuAccent: menuAccentSchema,
+    // A user's own presets (#96) — theirs by structure, no permission gates
+    // adding, updating, removing, or selecting one (D35).
+    personalPresets: z.array(namedPresetSchema),
+    selectedPreset: selectedPresetSchema.optional(),
   })
   .strict();
 
 export type UserAppearance = z.infer<typeof userAppearanceSchema>;
 
-/** A partial update to a user's own appearance (#95) — `setAppearance` merges this onto the caller's stored preference (or the default) rather than requiring every field on every call. */
-export const partialUserAppearanceSchema = userAppearanceSchema.partial();
+/**
+ * A partial update to a user's own appearance (#95) — `setAppearance` merges
+ * this onto the caller's stored preference (or the default) rather than
+ * requiring every field on every call. `selectedPreset: null` clears a
+ * selection explicitly, distinct from omitting the field to leave it
+ * unchanged (#96).
+ */
+export const partialUserAppearanceSchema = userAppearanceSchema
+  .partial()
+  .extend({
+    selectedPreset: z.union([selectedPresetSchema, z.null()]).optional(),
+  });
 
 export type PartialUserAppearance = z.infer<typeof partialUserAppearanceSchema>;
 
@@ -205,6 +326,7 @@ export const defaultUserAppearance: UserAppearance = {
   typeset: defaultTypeset,
   menuColour: "default",
   menuAccent: "subtle",
+  personalPresets: [],
 };
 
 const fieldSpecSchema = z
@@ -310,6 +432,10 @@ export const dashboardConfigurationSchema = z
   .object({
     integrations: z.array(integrationSchema),
     themes: z.array(themeSchema),
+    // Server-listed presets (D27, #96) — added by `presentation: write`,
+    // visible to every user. A user's own presets live in their appearance
+    // instead (D35).
+    presets: z.array(namedPresetSchema),
     dashboard: dashboardSchema,
     cards: z.array(cardSchema),
     // The shared card mapper store (D38): a query names one of these by
@@ -448,6 +574,22 @@ const removeThemeMutationSchema = z
   })
   .strict();
 
+/** Adds a server-listed preset visible to every user (D27, #96) — `presentation: write` only. */
+const addPresetMutationSchema = z
+  .object({
+    type: z.literal("add-preset"),
+    preset: namedPresetSchema,
+  })
+  .strict();
+
+/** Removes a server-listed preset. A user who had it selected falls back to their base colour (#96) — never a dangling reference an apply must guard against. */
+const removePresetMutationSchema = z
+  .object({
+    type: z.literal("remove-preset"),
+    presetId: z.string().min(1),
+  })
+  .strict();
+
 /** Changes the project-wide unused-integration retention period (D40, #89). Default is 30 days; only `integrations: write` may change it. */
 const setIntegrationRetentionPolicyMutationSchema = z
   .object({
@@ -528,6 +670,8 @@ export const mutationSchema = z.discriminatedUnion("type", [
   addThemeMutationSchema,
   editThemeMutationSchema,
   removeThemeMutationSchema,
+  addPresetMutationSchema,
+  removePresetMutationSchema,
   addIntegrationMutationSchema,
   editIntegrationMutationSchema,
   removeIntegrationMutationSchema,
@@ -564,6 +708,8 @@ export const mutationRequirements = {
   "add-theme": { category: "presentation", level: "write" },
   "edit-theme": { category: "presentation", level: "edit" },
   "remove-theme": { category: "presentation", level: "write" },
+  "add-preset": { category: "presentation", level: "write" },
+  "remove-preset": { category: "presentation", level: "write" },
   "add-integration": { category: "integrations", level: "write" },
   "edit-integration": { category: "integrations", level: "edit" },
   "remove-integration": { category: "integrations", level: "write" },
@@ -587,6 +733,7 @@ export const mutationRequirements = {
 export const defaultDashboardConfiguration: DashboardConfiguration = {
   integrations: [],
   themes: [{ id: "calm", settings: {} }],
+  presets: [],
   dashboard: { id: "home", cards: ["welcome"], theme: "calm" },
   cards: [
     {

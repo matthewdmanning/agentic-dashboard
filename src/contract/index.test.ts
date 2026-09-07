@@ -5,10 +5,14 @@ import {
   integrationSchema,
   compileCardMapper,
   mutationSchema,
+  namedPresetSchema,
   parseDashboardConfiguration,
+  presetSchema,
+  presetTokens,
   userAppearanceSchema,
   type CardMapperSpec,
   type DashboardConfiguration,
+  type Preset,
 } from "./index";
 import {
   useTestCardTemplates,
@@ -24,6 +28,7 @@ const configuration: DashboardConfiguration = {
     },
   ],
   themes: [{ id: "calm", settings: { density: "comfortable" } }],
+  presets: [],
   dashboard: { id: "home", cards: ["first", "second"], theme: "calm" },
   cards: [
     {
@@ -218,6 +223,7 @@ describe("user appearance (#94, #95)", () => {
     },
     menuColour: "default",
     menuAccent: "subtle",
+    personalPresets: [],
   };
 
   test("parses a complete, closed-vocabulary appearance", () => {
@@ -272,6 +278,85 @@ describe("user appearance (#94, #95)", () => {
     expect(() =>
       userAppearanceSchema.parse({ ...validAppearance, iconLibrary: "lucide" }),
     ).toThrow();
+  });
+
+  test("accepts a selected preset, and rejects clearing it via anything but null", () => {
+    expect(
+      userAppearanceSchema.parse({
+        ...validAppearance,
+        selectedPreset: { source: "personal", id: "my-theme" },
+      }),
+    ).toMatchObject({ selectedPreset: { source: "personal", id: "my-theme" } });
+
+    expect(() =>
+      userAppearanceSchema.parse({
+        ...validAppearance,
+        selectedPreset: { source: "cloud", id: "my-theme" },
+      }),
+    ).toThrow();
+  });
+});
+
+describe("presets (#96)", () => {
+  function samplePreset(overrides: Partial<Preset> = {}): Preset {
+    const block = Object.fromEntries(
+      presetTokens.map((token) => [token, "oklch(0.5 0 0)"]),
+    ) as Preset["light"];
+    return {
+      themeMapping: { "--color-background": "var(--background)" },
+      light: block,
+      dark: block,
+      radius: "0.5rem",
+      baseRules: "default",
+      ...overrides,
+    };
+  }
+
+  test("parses a complete token set", () => {
+    expect(presetSchema.parse(samplePreset())).toEqual(samplePreset());
+  });
+
+  test("rejects a partial preset missing the dark block", () => {
+    const { dark, ...partial } = samplePreset();
+    expect(() => presetSchema.parse(partial)).toThrow();
+  });
+
+  test("rejects a partial preset missing a single token from a complete block", () => {
+    const preset = samplePreset();
+    const { background, ...incompleteLight } = preset.light;
+    expect(() =>
+      presetSchema.parse({ ...preset, light: incompleteLight }),
+    ).toThrow();
+  });
+
+  test("rejects arbitrary CSS smuggled through a token value", () => {
+    const preset = samplePreset();
+    for (const payload of [
+      "red; } * { display: none",
+      "url(javascript:alert(1))",
+      "<style>",
+      "/* comment */ red",
+    ]) {
+      expect(() =>
+        presetSchema.parse({
+          ...preset,
+          light: { ...preset.light, background: payload },
+        }),
+      ).toThrow();
+    }
+  });
+
+  test("rejects a base-rules bundle outside the one supported identifier", () => {
+    expect(() =>
+      presetSchema.parse({ ...samplePreset(), baseRules: "custom" }),
+    ).toThrow();
+  });
+
+  test("a named preset requires an id alongside the complete token set", () => {
+    expect(
+      namedPresetSchema.parse({ id: "midnight", preset: samplePreset() }),
+    ).toMatchObject({ id: "midnight" });
+    expect(() => namedPresetSchema.parse({ preset: samplePreset() })).toThrow();
   });
 });
 

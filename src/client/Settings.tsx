@@ -309,6 +309,83 @@ export function Settings({
             ))}
           </select>
         </label>
+
+        {/*
+          A preset overrides base colour entirely once selected (D26, D27,
+          #96). Server presets are added by `presentation: write` through
+          the mutation pipeline above, not from here — this panel only
+          selects, removes, and clears, the ungated user-owned operations.
+        */}
+        {dashboard.presets && dashboard.presets.length > 0 ? (
+          <div>
+            <h3>Server presets</h3>
+            {dashboard.presets.map((preset) => (
+              <div key={preset.id}>
+                <span>{preset.id}</span>
+                <button
+                  type="button"
+                  disabled={
+                    appearance.selectedPreset?.source === "server" &&
+                    appearance.selectedPreset.id === preset.id
+                  }
+                  onClick={() =>
+                    updateAppearance({
+                      selectedPreset: { source: "server", id: preset.id },
+                    })
+                  }
+                >
+                  Select
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {appearance.personalPresets.length > 0 ? (
+          <div>
+            <h3>Your presets</h3>
+            {appearance.personalPresets.map((preset) => (
+              <div key={preset.id}>
+                <span>{preset.id}</span>
+                <button
+                  type="button"
+                  disabled={
+                    appearance.selectedPreset?.source === "personal" &&
+                    appearance.selectedPreset.id === preset.id
+                  }
+                  onClick={() =>
+                    updateAppearance({
+                      selectedPreset: { source: "personal", id: preset.id },
+                    })
+                  }
+                >
+                  Select
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    updateAppearance({
+                      personalPresets: appearance.personalPresets.filter(
+                        ({ id }) => id !== preset.id,
+                      ),
+                    })
+                  }
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {appearance.selectedPreset ? (
+          <button
+            type="button"
+            onClick={() => updateAppearance({ selectedPreset: null })}
+          >
+            Clear preset selection
+          </button>
+        ) : null}
       </fieldset>
 
       {settings.dashboard && settings.themes ? (

@@ -125,6 +125,8 @@ describe("dashboard MCP server", () => {
         "add-theme",
         "edit-theme",
         "remove-theme",
+        "add-preset",
+        "remove-preset",
         "add-integration",
         "edit-integration",
         "remove-integration",
@@ -137,6 +139,10 @@ describe("dashboard MCP server", () => {
         "set-base-colour",
         "set-typeset",
         "set-menu-appearance",
+        "add-personal-preset",
+        "remove-personal-preset",
+        "select-preset",
+        "clear-preset-selection",
       ]),
     );
   });

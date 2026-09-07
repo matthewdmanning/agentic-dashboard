@@ -52,6 +52,7 @@ import {
   type DashboardConfiguration,
   type Integration,
   type Mutation,
+  type NamedPreset,
   type PartialUserAppearance,
   type PermissionCategory,
   type PermissionLevel,
@@ -104,6 +105,7 @@ export interface ReadScopes {
   presentation: {
     dashboard: Dashboard;
     themes: Theme[];
+    presets: NamedPreset[];
   };
   integrations: Integration[];
   roles: Role[];
@@ -454,6 +456,7 @@ async function readState<Scope extends ReadScope>(
     presentation: () => ({
       dashboard: configuration.dashboard,
       themes: configuration.themes,
+      presets: configuration.presets,
     }),
     integrations: () => integrations,
     roles: () => [...(dependencies.roles ?? roles)],
@@ -503,6 +506,7 @@ function projectReadable(
   if (role.permissions.presentation !== "noAccess") {
     readable.dashboard = configuration.dashboard;
     readable.themes = configuration.themes;
+    readable.presets = configuration.presets;
   }
   if (role.permissions.integrations !== "noAccess") {
     readable.integrations = integrations;
@@ -887,7 +891,8 @@ async function readCallerAppearance(
       ? ((await dependencies.appearance.get(caller.user)) ??
         defaultUserAppearance)
       : defaultUserAppearance;
-  return { ...appearance, css: appearanceCss(appearance) };
+  const { presets } = await readConfiguration(dependencies.persistence);
+  return { ...appearance, css: appearanceCss(appearance, presets) };
 }
 
 /**
@@ -917,7 +922,13 @@ async function setCallerAppearance(
   }
   const existing =
     (await dependencies.appearance.get(user)) ?? defaultUserAppearance;
-  const appearance = userAppearanceSchema.parse({ ...existing, ...update });
+  // `selectedPreset: null` clears a selection explicitly (#96); an absent
+  // key leaves the existing selection untouched. Neither survives into the
+  // merged record `userAppearanceSchema` validates, which only ever accepts
+  // a `SelectedPreset` object or the field's outright absence.
+  const merged: Record<string, unknown> = { ...existing, ...update };
+  if (update.selectedPreset === null) delete merged.selectedPreset;
+  const appearance = userAppearanceSchema.parse(merged);
   await dependencies.appearance.set(user, appearance);
   if (dependencies.appearanceComponents) {
     await writeUserComponentsConfig(
@@ -927,7 +938,8 @@ async function setCallerAppearance(
       appearance,
     );
   }
-  return { ...appearance, css: appearanceCss(appearance) };
+  const { presets } = await readConfiguration(dependencies.persistence);
+  return { ...appearance, css: appearanceCss(appearance, presets) };
 }
 
 function requireQueryStore(dependencies: Dependencies): UserQueryStore {
@@ -1139,6 +1151,20 @@ function applyMutation(
       );
       return;
     }
+    case "add-preset":
+      addById(configuration.presets, mutation.preset, "preset");
+      return;
+    case "remove-preset":
+      // A user who had this selected falls back to their base colour (#96)
+      // instead of a dangling reference — `appearanceCss` already resolves
+      // a missing preset id to nothing, so no cross-store cleanup is needed
+      // here.
+      configuration.presets = removeById(
+        configuration.presets,
+        mutation.presetId,
+        "preset",
+      );
+      return;
     case "set-integration-retention-policy":
       configuration.integrationRetentionDays = mutation.retentionDays;
       return;

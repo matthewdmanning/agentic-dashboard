@@ -5,6 +5,9 @@ import * as z from "zod/v4";
 import {
   userAppearanceSchema,
   type BaseColour,
+  type NamedPreset,
+  type Preset,
+  type TokenBlock,
   type Typeset,
   type TypesetFontFamily,
   type UserAppearance,
@@ -252,29 +255,16 @@ const typesetFontStacks: Record<TypesetFontFamily, string> = {
 };
 
 /**
- * The viewing user's effective stylesheet (D26, #95): a `:root` block naming
- * only semantic colour tokens `styles.css` already declares, plus a `main`
- * rule applying their typeset — the same dashboard root every card renders
- * under, so one rule covers all of them without a card template naming a
- * font or size of its own. Computed fresh from the stored appearance every
- * time, never cached, so no stale value can survive a change.
+ * The `main` rule applying a user's typeset (#95) — the same dashboard root
+ * every card renders under, so one rule covers all of them without a card
+ * template naming a font or size of its own.
  *
  * ponytail: `menuColour`/`menuAccent` are stored and generated into the
  * user's `components.json` but have no CSS rule here yet — this codebase has
  * no menu-shaped card template to style. Add the rule once one exists.
  */
-export function appearanceCss(appearance: UserAppearance): string {
-  const colourDeclarations = Object.entries(
-    baseColourTokenValues[appearance.baseColour],
-  )
-    .map(([token, value]) => `  --${token}: ${value};`)
-    .join("\n");
-  const { typeset } = appearance;
-  return `:root {
-${colourDeclarations}
-}
-
-main {
+function typesetCss(typeset: Typeset): string {
+  return `main {
   font-size: calc(1rem * ${typeset.size});
   line-height: ${typesetLeadingValues[typeset.leading]};
   text-wrap: ${typeset.flow};
@@ -289,4 +279,84 @@ main :is(code, pre, kbd, samp) {
   font-family: ${typesetFontStacks[typeset.monospaceFont]};
 }
 `;
+}
+
+function tokenBlockDeclarations(block: TokenBlock): string {
+  return Object.entries(block)
+    .map(([token, value]) => `  --${token}: ${value};`)
+    .join("\n");
+}
+
+/**
+ * The viewing user's effective stylesheet from their base colour (D26, #95):
+ * a `:root` block naming only semantic colour tokens `styles.css` already
+ * declares, plus their typeset. Computed fresh from the stored appearance
+ * every time, never cached, so no stale value can survive a change.
+ */
+function baseColourCss(baseColour: BaseColour, typeset: Typeset): string {
+  const colourDeclarations = Object.entries(baseColourTokenValues[baseColour])
+    .map(([token, value]) => `  --${token}: ${value};`)
+    .join("\n");
+  return `:root {
+${colourDeclarations}
+}
+
+${typesetCss(typeset)}`;
+}
+
+/**
+ * The viewing user's effective stylesheet from a selected preset (D26, D27,
+ * #96): `:root` and `.dark` blocks straight from the preset's own light and
+ * dark token blocks, replacing the base-colour lookup entirely, plus their
+ * typeset. The preset's `themeMapping` and `baseRules` are not re-emitted
+ * here — `styles.css` already compiles that mapping and reset once, and
+ * every preset in this project uses the same one (D27).
+ */
+function presetCss(preset: Preset, typeset: Typeset): string {
+  return `:root {
+  --radius: ${preset.radius};
+${tokenBlockDeclarations(preset.light)}
+}
+
+.dark {
+${tokenBlockDeclarations(preset.dark)}
+}
+
+${typesetCss(typeset)}`;
+}
+
+/**
+ * Resolves a user's `selectedPreset` against the shared server-listed
+ * presets or their own personal list (#96) — a selection naming a preset
+ * that no longer exists (removed server preset, deleted personal preset)
+ * resolves to nothing rather than failing, so the base-colour path takes
+ * over silently instead of the dashboard breaking.
+ */
+function resolveSelectedPreset(
+  appearance: UserAppearance,
+  serverPresets: readonly NamedPreset[],
+): Preset | undefined {
+  const { selectedPreset } = appearance;
+  if (!selectedPreset) return undefined;
+  const list =
+    selectedPreset.source === "server"
+      ? serverPresets
+      : appearance.personalPresets;
+  return list.find(({ id }) => id === selectedPreset.id)?.preset;
+}
+
+/**
+ * The viewing user's complete effective stylesheet (D26, D27, #94-#96): a
+ * selected preset overrides the base-colour path entirely when it still
+ * resolves, otherwise the base-colour lookup governs — either way, the
+ * user's own typeset always applies on top.
+ */
+export function appearanceCss(
+  appearance: UserAppearance,
+  serverPresets: readonly NamedPreset[] = [],
+): string {
+  const preset = resolveSelectedPreset(appearance, serverPresets);
+  return preset
+    ? presetCss(preset, appearance.typeset)
+    : baseColourCss(appearance.baseColour, appearance.typeset);
 }
