@@ -96,6 +96,7 @@ const failureStatus: Record<ServiceFailureCode, number> = {
   "connections-unavailable": 500,
   "queries-unavailable": 500,
   "invalid-card-template": 422,
+  "integration-blocked": 409,
 };
 
 function failureResponse(error: unknown): Response {
@@ -216,6 +217,25 @@ export async function handleIntegrationTypesRequest(
   try {
     return Response.json(
       await service.connectableTypes(credentialFromRequest(request)),
+    );
+  } catch (error) {
+    return failureResponse(error);
+  }
+}
+
+/**
+ * How Settings learns which of the caller's own connections stopped working
+ * (D40, #92) — ungated inside `service.blockedIntegrationNotices`, since a
+ * user's own connection is theirs to know about by structure, not by
+ * permission.
+ */
+export async function handleBlockedIntegrationNoticesRequest(
+  request: Request,
+  service: DashboardService,
+): Promise<Response> {
+  try {
+    return Response.json(
+      await service.blockedIntegrationNotices(credentialFromRequest(request)),
     );
   } catch (error) {
     return failureResponse(error);
@@ -402,6 +422,26 @@ async function startServer() {
     if (request.url === "/api/integrations/types") {
       try {
         const result = await handleIntegrationTypesRequest(
+          new Request(`http://dashboard${request.url}`, {
+            method: request.method,
+            headers: authorizationHeaders(request),
+          }),
+          service,
+        );
+        response.writeHead(result.status, Object.fromEntries(result.headers));
+        response.end(Buffer.from(await result.arrayBuffer()));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "text/plain" });
+        response.end(
+          error instanceof Error ? error.message : "Invalid request",
+        );
+      }
+      return;
+    }
+
+    if (request.url === "/api/integrations/blocked-notices") {
+      try {
+        const result = await handleBlockedIntegrationNoticesRequest(
           new Request(`http://dashboard${request.url}`, {
             method: request.method,
             headers: authorizationHeaders(request),

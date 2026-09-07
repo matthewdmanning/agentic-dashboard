@@ -1104,6 +1104,167 @@ describe("unused-integration retention (#89)", () => {
   });
 });
 
+describe("integration blocking (#92)", () => {
+  const withTeamCalendar = {
+    ...testConfiguration,
+    integrations: [
+      { id: "team-calendar", type: "google-calendar", settings: {} },
+    ],
+  };
+
+  test("block-integration and unblock-integration require integrations: write, not just edit", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "write",
+        presentation: "write",
+        integrations: "edit",
+        roles: "noAccess",
+      }),
+    });
+
+    await expect(
+      service.apply([
+        { type: "block-integration", integrationId: "team-calendar" },
+      ]),
+    ).rejects.toThrow("Permission denied");
+    await expect(
+      service.apply([
+        { type: "unblock-integration", integrationId: "team-calendar" },
+      ]),
+    ).rejects.toThrow("Permission denied");
+  });
+
+  test("edit-integration cannot flip an entry's state without integrations: write", async () => {
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      localUser: withLocalPermissions({
+        data: "write",
+        cards: "write",
+        presentation: "write",
+        integrations: "edit",
+        roles: "noAccess",
+      }),
+    });
+
+    await expect(
+      service.apply([
+        {
+          type: "edit-integration",
+          integration: {
+            id: "team-calendar",
+            type: "google-calendar",
+            settings: {},
+            state: "blocked",
+          },
+        },
+      ]),
+    ).rejects.toThrow("Permission denied");
+    // Editing a field other than `state` still only needs `edit`.
+    await expect(
+      service.apply([
+        {
+          type: "edit-integration",
+          integration: {
+            id: "team-calendar",
+            type: "google-calendar",
+            settings: { calendarId: "team" },
+          },
+        },
+      ]),
+    ).resolves.toBeDefined();
+  });
+
+  test("a blocked integration rejects a new connection and every query refresh, keeping existing connections and queries stored", async () => {
+    const connections = createMemoryConnectionStore();
+    const queries = createEncryptedQueryStore(
+      join(await mkdtemp(join(tmpdir(), "blocked-queries-")), "queries.json"),
+      createSecretBox(randomBytes(32)),
+    );
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      queries,
+    });
+    await service.addQuery({
+      cardId: "welcome",
+      integration: "team-calendar",
+      query: {},
+      cardMapper: "identity",
+    });
+
+    await service.apply([
+      { type: "block-integration", integrationId: "team-calendar" },
+    ]);
+
+    await expect(
+      service.connect("team-calendar", "a-secret"),
+    ).rejects.toThrow("blocked");
+    await expect(connections.get(userInfo().username, "team-calendar")).resolves.toBeUndefined();
+    // Nothing about the query the caller already had was touched.
+    await expect(service.read("queries")).resolves.toEqual([
+      expect.objectContaining({ integration: "team-calendar" }),
+    ]);
+  });
+
+  test("unblocking restores allowed connection behavior without reauthorization", async () => {
+    const connections = createMemoryConnectionStore();
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+    });
+    await service.connect("team-calendar", "a-secret");
+    await service.apply([
+      { type: "block-integration", integrationId: "team-calendar" },
+    ]);
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBe("a-secret");
+
+    await service.apply([
+      { type: "unblock-integration", integrationId: "team-calendar" },
+    ]);
+
+    // The connection made before blocking still works -- no reconnection required.
+    await expect(
+      connections.get(userInfo().username, "team-calendar"),
+    ).resolves.toBe("a-secret");
+    await expect(
+      service.connect("team-calendar", "a-new-secret"),
+    ).resolves.toBeUndefined();
+  });
+
+  test("blockedIntegrationNotices reports only the caller's own connections to a blocked entry", async () => {
+    const connections = createMemoryConnectionStore();
+    const authStore = {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : credential === "bob-token"
+            ? { user: "bob", role: "user" }
+            : undefined,
+    };
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      authStore,
+    });
+    await service.connect("team-calendar", "alice-secret", "alice-token");
+    await service.apply([
+      { type: "block-integration", integrationId: "team-calendar" },
+    ]);
+
+    await expect(
+      service.blockedIntegrationNotices("alice-token"),
+    ).resolves.toEqual(["team-calendar"]);
+    // Bob never connected, so blocking this entry is not his notice to see.
+    await expect(
+      service.blockedIntegrationNotices("bob-token"),
+    ).resolves.toEqual([]);
+  });
+});
+
 describe("user-owned queries", () => {
   async function createQueryStore() {
     const dir = await mkdtemp(join(tmpdir(), "user-queries-"));

@@ -329,6 +329,22 @@ const removeIntegrationMutationSchema = z
   })
   .strict();
 
+/** Suspends a catalog entry (D40, #92): blocks new connections and refreshes, keeps everything stored. Gated at `integrations: write`, stricter than `edit-integration`'s `edit`. */
+const blockIntegrationMutationSchema = z
+  .object({
+    type: z.literal("block-integration"),
+    integrationId: z.string().min(1),
+  })
+  .strict();
+
+/** Reverses `block-integration` (D40, #92): restores connection and refresh behavior without reauthorization, since nothing about the connection or query was touched. */
+const unblockIntegrationMutationSchema = z
+  .object({
+    type: z.literal("unblock-integration"),
+    integrationId: z.string().min(1),
+  })
+  .strict();
+
 const removeThemeMutationSchema = z
   .object({
     type: z.literal("remove-theme"),
@@ -420,6 +436,8 @@ export const mutationSchema = z.discriminatedUnion("type", [
   addIntegrationMutationSchema,
   editIntegrationMutationSchema,
   removeIntegrationMutationSchema,
+  blockIntegrationMutationSchema,
+  unblockIntegrationMutationSchema,
   setIntegrationRetentionPolicyMutationSchema,
   assembleCardTemplateMutationSchema,
   addCardMapperMutationSchema,
@@ -455,6 +473,8 @@ export const mutationRequirements = {
   "add-integration": { category: "integrations", level: "write" },
   "edit-integration": { category: "integrations", level: "edit" },
   "remove-integration": { category: "integrations", level: "write" },
+  "block-integration": { category: "integrations", level: "write" },
+  "unblock-integration": { category: "integrations", level: "write" },
   "set-integration-retention-policy": {
     category: "integrations",
     level: "write",

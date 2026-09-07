@@ -129,6 +129,8 @@ describe("dashboard MCP server", () => {
         "add-integration",
         "edit-integration",
         "remove-integration",
+        "block-integration",
+        "unblock-integration",
         "set-integration-retention-policy",
         "connect-integration",
         "disconnect-integration",

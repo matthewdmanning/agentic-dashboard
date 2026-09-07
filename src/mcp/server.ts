@@ -243,6 +243,31 @@ export function createDashboardMcpServer(service: DashboardService) {
   );
 
   server.registerTool(
+    "block-integration",
+    {
+      description:
+        "Suspend an integration: rejects new connections and query refreshes, but keeps every connection and query stored.",
+      inputSchema: z.object({ integrationId: z.string() }),
+    },
+    async ({ integrationId }) =>
+      apply({ type: "block-integration", integrationId }, "Integration blocked"),
+  );
+
+  server.registerTool(
+    "unblock-integration",
+    {
+      description:
+        "Restore a blocked integration to normal connection and refresh behavior. No reauthorization is needed.",
+      inputSchema: z.object({ integrationId: z.string() }),
+    },
+    async ({ integrationId }) =>
+      apply(
+        { type: "unblock-integration", integrationId },
+        "Integration unblocked",
+      ),
+  );
+
+  server.registerTool(
     "set-integration-retention-policy",
     {
       description:

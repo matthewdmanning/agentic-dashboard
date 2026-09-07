@@ -66,7 +66,8 @@ export type ServiceFailureCode =
   | "in-use"
   | "connections-unavailable"
   | "queries-unavailable"
-  | "invalid-card-template";
+  | "invalid-card-template"
+  | "integration-blocked";
 
 export class ServiceFailure extends Error {
   constructor(
@@ -215,6 +216,14 @@ export interface DashboardService {
    * `disconnect` already key a caller's own connection by.
    */
   owner(credential?: string): Promise<string | undefined>;
+  /**
+   * The blocked catalog entries the caller is affected by — the ones they
+   * hold a connection to (D40, #92). Ungated (D35), the same way `read`
+   * never checks a permission before handing back the caller's own queries:
+   * a user's own connection is theirs by structure, and so is knowing it
+   * stopped working. Never names another user or reveals a credential.
+   */
+  blockedIntegrationNotices(credential?: string): Promise<string[]>;
 }
 
 export function createService(dependencies: Dependencies): DashboardService {
@@ -269,6 +278,8 @@ export function createService(dependencies: Dependencies): DashboardService {
       enqueue(() =>
         resolveCaller(dependencies, credential).then((caller) => caller.user),
       ),
+    blockedIntegrationNotices: (credential) =>
+      enqueue(() => blockedIntegrationNotices(dependencies, credential)),
   };
 }
 
@@ -477,6 +488,19 @@ async function applyMutations(
       requireLevel(role, "presentation", "write");
     }
 
+    // `edit-integration` replaces the whole entry, including `state` — a
+    // caller with only `integrations: edit` must not be able to block or
+    // unblock through it, since #92 gates that at `write` (D40). This is the
+    // one runtime fact `mutationRequirements`'s static table can't express.
+    if (mutation.type === "edit-integration") {
+      const existing = integrations.find(
+        ({ id }) => id === mutation.integration.id,
+      );
+      if (existing && existing.state !== mutation.integration.state) {
+        requireLevel(role, "integrations", "write");
+      }
+    }
+
     // Adding a card mapper is ungated by structure (D38) — the resolved
     // caller becomes its owner, so there must be a caller to own it.
     if (mutation.type === "add-card-mapper" && !caller.user) {
@@ -564,9 +588,13 @@ async function applyMutations(
     if (
       dependencies.catalog &&
       mutations.some(({ type }) =>
-        ["add-integration", "edit-integration", "remove-integration"].includes(
-          type,
-        ),
+        [
+          "add-integration",
+          "edit-integration",
+          "remove-integration",
+          "block-integration",
+          "unblock-integration",
+        ].includes(type),
       )
     ) {
       await dependencies.catalog.write(
@@ -642,10 +670,19 @@ async function connectIntegration(
   // catalog entry alone — the caller resolved here is always that user.
   const user = await requireOwner(dependencies, credential, "a connection");
 
-  if (!integrations.some(({ id }) => id === catalogEntryId)) {
+  const integration = integrations.find(({ id }) => id === catalogEntryId);
+  if (!integration) {
     throw new ServiceFailure(
       "unknown-id",
       `Unknown integration: ${catalogEntryId}`,
+    );
+  }
+  // Blocked (D40, #92): rejects a new connection immediately, without
+  // touching any connection or query the entry already has.
+  if (integration.state === "blocked") {
+    throw new ServiceFailure(
+      "integration-blocked",
+      `Integration '${catalogEntryId}' is blocked`,
     );
   }
 
@@ -705,6 +742,34 @@ async function readConnectableTypes(
     return connectableTypesFromCatalog(await dependencies.catalog.read());
   }
   return [...(dependencies.connectableTypes ?? [])];
+}
+
+/**
+ * Which blocked catalog entries the caller holds a connection to (D40,
+ * #92) — Settings' one source for "this integration you connected stopped
+ * working." No connection store or no resolved identity both mean nothing to
+ * report, not an error.
+ */
+async function blockedIntegrationNotices(
+  dependencies: Dependencies,
+  credential: string | undefined,
+): Promise<string[]> {
+  const caller = await resolveCaller(dependencies, credential);
+  if (!caller.user || !dependencies.connections) return [];
+
+  const configuration = await readConfiguration(dependencies.persistence);
+  const integrations = await readIntegrations(dependencies, configuration);
+  const blocked = integrations.filter(
+    (integration) => integration.state === "blocked",
+  );
+  const connectedFlags = await Promise.all(
+    blocked.map((integration) =>
+      dependencies.connections!.get(caller.user!, integration.id),
+    ),
+  );
+  return blocked
+    .filter((_, index) => connectedFlags[index] !== undefined)
+    .map((integration) => integration.id);
 }
 
 function requireQueryStore(dependencies: Dependencies): UserQueryStore {
@@ -948,6 +1013,20 @@ function applyMutation(
         mutation.integrationId,
         "integration",
       );
+      return;
+    case "block-integration":
+      requireById(
+        configuration.integrations,
+        mutation.integrationId,
+        "integration",
+      ).state = "blocked";
+      return;
+    case "unblock-integration":
+      requireById(
+        configuration.integrations,
+        mutation.integrationId,
+        "integration",
+      ).state = "available";
       return;
     case "assemble-card-template":
       // Built, type-checked, and promoted through build.ts's seam above,

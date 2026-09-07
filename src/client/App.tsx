@@ -8,6 +8,7 @@ import {
 } from "./dashboard-configuration-client";
 import {
   connectIntegration,
+  loadBlockedIntegrationNotices,
   loadConnectableIntegrationTypes,
   refreshIntegrations,
 } from "./integrations-client";
@@ -56,6 +57,9 @@ export function App() {
   const [refreshError, setRefreshError] = useState<string>();
   const [offline, setOffline] = useState(false);
   const [connectableTypes, setConnectableTypes] = useState<string[]>([]);
+  const [blockedIntegrationNotices, setBlockedIntegrationNotices] = useState<
+    string[]
+  >([]);
   const [pendingCount, setPendingCount] = useState(
     pendingMutationCount(localStorage),
   );
@@ -96,6 +100,9 @@ export function App() {
     void loadCallerRole().then(setCallerRole);
     void loadConnectableIntegrationTypes()
       .then(setConnectableTypes)
+      .catch(() => undefined);
+    void loadBlockedIntegrationNotices()
+      .then(setBlockedIntegrationNotices)
       .catch(() => undefined);
 
     const handleOnline = () => void sync().then(() => setOffline(false));
@@ -171,6 +178,7 @@ export function App() {
           dashboard={dashboard}
           callerRole={callerRole}
           connectableTypes={connectableTypes}
+          blockedIntegrationNotices={blockedIntegrationNotices}
           onSave={saveMutations}
           onConnect={connectIntegration}
         />

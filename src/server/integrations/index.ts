@@ -111,6 +111,16 @@ export async function refreshCardQueries(
       });
       continue;
     }
+    // Blocked (D40, #92): rejects the refresh outright, before any pull —
+    // the entry, its connections, and this query all stay stored untouched.
+    if (integration.state === "blocked") {
+      refreshes.push({
+        cardId: query.cardId,
+        status: "failed",
+        message: `Integration '${integration.id}' is blocked`,
+      });
+      continue;
+    }
 
     const pull = integrationPulls[integration.type];
     if (!pull) {

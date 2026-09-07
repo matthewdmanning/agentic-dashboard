@@ -8,12 +8,14 @@ import { Settings } from "./Settings";
 function render(
   dashboard: Parameters<typeof Settings>[0]["dashboard"],
   callerRole?: Parameters<typeof Settings>[0]["callerRole"],
+  blockedIntegrationNotices: string[] = [],
 ) {
   return renderToStaticMarkup(
     createElement(Settings, {
       dashboard,
       callerRole,
       connectableTypes: ["example-service"],
+      blockedIntegrationNotices,
       onSave: async () => undefined,
       onConnect: async () => undefined,
     }),
@@ -103,5 +105,36 @@ describe("Settings contract", () => {
     expect(integrations).toContain("Disconnect");
     // The panel connects and disconnects; a card's query decides what is shown.
     expect(integrations).not.toContain("calendarId");
+  });
+
+  test("shows a persistent notice for a blocked integration, without naming any other user (#92)", () => {
+    const integrations = fieldset(
+      render(
+        {
+          integrations: [
+            { id: "team-calendar", type: "example-service", settings: {} },
+          ],
+        },
+        undefined,
+        ["team-calendar"],
+      ),
+      "Integrations",
+    );
+
+    expect(integrations).toContain("Blocked");
+    expect(integrations).toContain("team-calendar");
+  });
+
+  test("shows no blocked notice when nothing is blocked", () => {
+    const integrations = fieldset(
+      render({
+        integrations: [
+          { id: "team-calendar", type: "example-service", settings: {} },
+        ],
+      }),
+      "Integrations",
+    );
+
+    expect(integrations).not.toContain("Blocked");
   });
 });

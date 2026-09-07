@@ -24,6 +24,18 @@ export async function loadConnectableIntegrationTypes(): Promise<string[]> {
   return (await response.json()) as string[];
 }
 
+/** Blocked catalog entries the caller holds a connection to (D40, #92) — Settings' one source for a persistent blocked notice. */
+export async function loadBlockedIntegrationNotices(): Promise<string[]> {
+  const response = await fetch(
+    "/api/integrations/blocked-notices",
+    authorized(),
+  );
+  if (!response.ok) {
+    throw await failureFrom(response, "Could not load blocked integrations");
+  }
+  return (await response.json()) as string[];
+}
+
 /**
  * The connect handoff for one connection: hands the service's secret to the
  * server, which stores it outside dashboard configuration, keyed by the

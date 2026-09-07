@@ -10,6 +10,7 @@ export function Settings({
   dashboard,
   callerRole,
   connectableTypes,
+  blockedIntegrationNotices,
   onSave,
   onConnect,
 }: {
@@ -18,6 +19,8 @@ export function Settings({
   callerRole?: Role;
   /** The services this build can connect to (#66) — Settings names none of its own. */
   connectableTypes: string[];
+  /** Blocked catalog entries the caller holds a connection to (D40, #92) — persists until the entry is unblocked or removed. */
+  blockedIntegrationNotices: string[];
   onSave: (mutations: readonly Mutation[]) => Promise<void>;
   /** Hands a connection's secret to the server. Not a mutation — see `contract`'s ban on a credential-shaped settings key. */
   onConnect: (integrationId: string, credential: string) => Promise<void>;
@@ -183,6 +186,14 @@ export function Settings({
       {settings.integrations ? (
         <fieldset>
           <legend>Integrations</legend>
+          {blockedIntegrationNotices.length > 0 ? (
+            <p role="alert">
+              Blocked by an administrator:{" "}
+              {blockedIntegrationNotices.join(", ")}. Your connection and
+              data remain stored; reconnecting is not needed once it is
+              unblocked.
+            </p>
+          ) : null}
           {settings.integrations.map((integration) => (
             <div key={integration.id}>
               <span>{integration.id}</span>

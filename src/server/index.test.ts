@@ -587,6 +587,53 @@ describe("integration refresh endpoint", () => {
       state: { events: [] },
     });
   });
+
+  test("a blocked integration rejects the refresh without ever pulling (#92)", async () => {
+    const service = createTestService({
+      ...defaultDashboardConfiguration,
+      integrations: [
+        {
+          id: "team-calendar",
+          type: "google-calendar",
+          settings: {},
+          state: "blocked",
+        },
+      ],
+      cards: [
+        ...defaultDashboardConfiguration.cards,
+        {
+          id: "calendar-card",
+          title: "Calendar",
+          template: "calendar",
+          state: { events: [] },
+        },
+      ],
+    });
+    await service.apply([
+      { type: "add-card-mapper", name: "events", spec: calendarMapperSpec },
+    ]);
+    await service.addQuery({ ...calendarQuery, cardId: "calendar-card" });
+    const connections = createMemoryConnectionStore();
+    await connections.set(userInfo().username, "team-calendar", "access-token");
+    const pull = vi.fn(async () => Response.json({ items: [] }));
+
+    const response = await handleIntegrationRefreshRequest(
+      new Request("http://dashboard/api/integrations/refresh", {
+        method: "POST",
+      }),
+      { service, connections, fetch: pull },
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual([
+      {
+        cardId: "calendar-card",
+        status: "failed",
+        message: "Integration 'team-calendar' is blocked",
+      },
+    ]);
+    expect(pull).not.toHaveBeenCalled();
+  });
 });
 
 describe("integration types endpoint", () => {
