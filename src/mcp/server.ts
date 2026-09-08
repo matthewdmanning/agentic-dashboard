@@ -3,14 +3,10 @@ import * as z from "zod/v4";
 
 import {
   baseColourSchema,
-  cardSchema,
-  compositionNodeSchema,
-  dashboardSchema,
-  integrationSchema,
   menuAccentSchema,
   menuColourSchema,
+  mutationSchema,
   namedPresetSchema,
-  themeSchema,
   typesetSchema,
   type Mutation,
   type NamedPreset,
@@ -58,6 +54,124 @@ async function reply(operation: () => Promise<string>) {
   }
 }
 
+interface MutationToolDescriptor {
+  name: string;
+  description: string;
+  successMessage: string;
+}
+
+/**
+ * One MCP tool per `Mutation` variant, driven off `mutationSchema` itself
+ * (contract) rather than a hand-copied input schema per tool -- the payload
+ * shape and its validation (including `.strict()`) come straight from the
+ * same schema `apply` enforces, so the two can't quietly drift apart.
+ * `null` marks a variant deliberately excluded from this generic table --
+ * `insert-card` needs `dashboard.id` fetched first (registered by hand
+ * below), and `add-card-mapper`/`edit-card-mapper`/`remove-card-mapper`
+ * have no MCP tool at all today (exposing them is its own decision, not a
+ * side effect of this table). `satisfies Record<Mutation["type"], ...>`
+ * mirrors `mutationRequirements`'s own pattern in contract -- a mutation
+ * type added there without a decision here fails `tsc`, not silently.
+ */
+const mutationToolDescriptors = {
+  "add-card": {
+    name: "add-card",
+    description: "Add a new card.",
+    successMessage: "Card added",
+  },
+  "edit-card": {
+    name: "edit-card",
+    description: "Replace an existing card.",
+    successMessage: "Card edited",
+  },
+  "remove-card": {
+    name: "remove-card",
+    description: "Delete a card.",
+    successMessage: "Card removed",
+  },
+  "patch-card-state": {
+    name: "patch-card-state",
+    description: "Patch the state displayed by an existing card.",
+    successMessage: "Card state updated",
+  },
+  "insert-card": null,
+  "assemble-card-template": {
+    name: "assemble-card-template",
+    description:
+      "Assemble a complete card template from a name, a mandatory JSON Schema, and a declarative composition tree of shadcn/ui components.",
+    successMessage: "Card template assembled",
+  },
+  "edit-dashboard": {
+    name: "edit-dashboard",
+    description: "Replace the dashboard document.",
+    successMessage: "Dashboard updated",
+  },
+  "add-theme": {
+    name: "add-theme",
+    description: "Add a theme.",
+    successMessage: "Theme added",
+  },
+  "edit-theme": {
+    name: "edit-theme",
+    description: "Replace an existing theme.",
+    successMessage: "Theme edited",
+  },
+  "remove-theme": {
+    name: "remove-theme",
+    description: "Delete an unused theme.",
+    successMessage: "Theme removed",
+  },
+  "add-preset": {
+    name: "add-preset",
+    description:
+      "Add a server-listed preset (a complete token set: theme mapping, light and dark blocks, radius, base rules) visible to every user.",
+    successMessage: "Preset added",
+  },
+  "remove-preset": {
+    name: "remove-preset",
+    description:
+      "Delete a server-listed preset. Any user who had it selected falls back to their base colour.",
+    successMessage: "Preset removed",
+  },
+  "add-integration": {
+    name: "add-integration",
+    description: "Add an integration.",
+    successMessage: "Integration added",
+  },
+  "edit-integration": {
+    name: "edit-integration",
+    description: "Replace an existing integration.",
+    successMessage: "Integration edited",
+  },
+  "remove-integration": {
+    name: "remove-integration",
+    description:
+      "Delete an integration. Fails naming aggregate connection and query counts if anything depends on it -- pass override to remove it anyway. Removing destroys its connections; queries stay stored but become unavailable.",
+    successMessage: "Integration removed",
+  },
+  "block-integration": {
+    name: "block-integration",
+    description:
+      "Suspend an integration: rejects new connections and query refreshes, but keeps every connection and query stored.",
+    successMessage: "Integration blocked",
+  },
+  "unblock-integration": {
+    name: "unblock-integration",
+    description:
+      "Restore a blocked integration to normal connection and refresh behavior. No reauthorization is needed.",
+    successMessage: "Integration unblocked",
+  },
+  "set-integration-retention-policy": {
+    name: "set-integration-retention-policy",
+    description:
+      "Set how many days an unused dynamic integration is kept before it is automatically removed. Never applies to a default or recommended integration.",
+    successMessage: "Retention policy updated",
+  },
+  "add-card-mapper": null,
+  "edit-card-mapper": null,
+  "remove-card-mapper": null,
+} as const satisfies Record<Mutation["type"], MutationToolDescriptor | null>;
+
 export function createDashboardMcpServer(service: DashboardService) {
   const server = new McpServer({
     name: "personal-dashboard",
@@ -83,44 +197,25 @@ export function createDashboardMcpServer(service: DashboardService) {
       reply(async () => JSON.stringify(await service.read(scope))),
   );
 
-  server.registerTool(
-    "add-card",
-    {
-      description: "Add a new card.",
-      inputSchema: z.object({ card: cardSchema }),
-    },
-    async ({ card }) => apply({ type: "add-card", card }, "Card added"),
-  );
-  server.registerTool(
-    "edit-card",
-    {
-      description: "Replace an existing card.",
-      inputSchema: z.object({ card: cardSchema }),
-    },
-    async ({ card }) => apply({ type: "edit-card", card }, "Card edited"),
-  );
-  server.registerTool(
-    "remove-card",
-    {
-      description: "Delete a card.",
-      inputSchema: z.object({ cardId: z.string() }),
-    },
-    async ({ cardId }) =>
-      apply({ type: "remove-card", cardId }, "Card removed"),
-  );
-
-  server.registerTool(
-    "patch-card-state",
-    {
-      description: "Patch the state displayed by an existing card.",
-      inputSchema: z.object({
-        cardId: z.string(),
-        patch: z.record(z.string(), z.unknown()),
-      }),
-    },
-    async ({ cardId, patch }) =>
-      apply({ type: "patch-card-state", cardId, patch }, "Card state updated"),
-  );
+  // Cast away the 20-way union of exact `.omit` overloads: every variant is
+  // `z.object({ type: z.literal(...), ...}).strict()`, so `.shape.type.value`
+  // and `.omit({type: true})` are safe on all of them, but TS can't unify the
+  // overload across a union this wide.
+  for (const option of mutationSchema.options as z.ZodObject<z.ZodRawShape>[]) {
+    const type = (option.shape.type as z.ZodLiteral<string>)
+      .value as Mutation["type"];
+    const descriptor = mutationToolDescriptors[type];
+    if (!descriptor) continue;
+    server.registerTool(
+      descriptor.name,
+      {
+        description: descriptor.description,
+        inputSchema: option.omit({ type: true }),
+      },
+      async (args: Record<string, unknown>) =>
+        apply({ type, ...args } as Mutation, descriptor.successMessage),
+    );
+  }
 
   server.registerTool(
     "insert-card",
@@ -144,166 +239,6 @@ export function createDashboardMcpServer(service: DashboardService) {
         ]);
         return "Card inserted";
       }),
-  );
-
-  server.registerTool(
-    "assemble-card-template",
-    {
-      description:
-        "Assemble a complete card template from a name, a mandatory JSON Schema, and a declarative composition tree of shadcn/ui components.",
-      inputSchema: z.object({
-        template: z.string().min(1),
-        jsonSchema: z.record(z.string(), z.unknown()),
-        composition: compositionNodeSchema,
-      }),
-    },
-    async ({ template, jsonSchema, composition }) =>
-      apply(
-        { type: "assemble-card-template", template, jsonSchema, composition },
-        "Card template assembled",
-      ),
-  );
-
-  server.registerTool(
-    "edit-dashboard",
-    {
-      description: "Replace the dashboard document.",
-      inputSchema: z.object({ dashboard: dashboardSchema }),
-    },
-    async ({ dashboard }) =>
-      apply({ type: "edit-dashboard", dashboard }, "Dashboard updated"),
-  );
-
-  server.registerTool(
-    "add-theme",
-    {
-      description: "Add a theme.",
-      inputSchema: z.object({ theme: themeSchema }),
-    },
-    async ({ theme }) => apply({ type: "add-theme", theme }, "Theme added"),
-  );
-
-  server.registerTool(
-    "edit-theme",
-    {
-      description: "Replace an existing theme.",
-      inputSchema: z.object({ theme: themeSchema }),
-    },
-    async ({ theme }) => apply({ type: "edit-theme", theme }, "Theme edited"),
-  );
-
-  server.registerTool(
-    "remove-theme",
-    {
-      description: "Delete an unused theme.",
-      inputSchema: z.object({ themeId: z.string() }),
-    },
-    async ({ themeId }) =>
-      apply({ type: "remove-theme", themeId }, "Theme removed"),
-  );
-
-  server.registerTool(
-    "add-preset",
-    {
-      description:
-        "Add a server-listed preset (a complete token set: theme mapping, light and dark blocks, radius, base rules) visible to every user.",
-      inputSchema: z.object({ preset: namedPresetSchema }),
-    },
-    async ({ preset }) => apply({ type: "add-preset", preset }, "Preset added"),
-  );
-
-  server.registerTool(
-    "remove-preset",
-    {
-      description:
-        "Delete a server-listed preset. Any user who had it selected falls back to their base colour.",
-      inputSchema: z.object({ presetId: z.string() }),
-    },
-    async ({ presetId }) =>
-      apply({ type: "remove-preset", presetId }, "Preset removed"),
-  );
-
-  server.registerTool(
-    "add-integration",
-    {
-      description: "Add an integration.",
-      inputSchema: z.object({ integration: integrationSchema }),
-    },
-    async ({ integration }) =>
-      apply({ type: "add-integration", integration }, "Integration added"),
-  );
-
-  server.registerTool(
-    "edit-integration",
-    {
-      description: "Replace an existing integration.",
-      inputSchema: z.object({ integration: integrationSchema }),
-    },
-    async ({ integration }) =>
-      apply({ type: "edit-integration", integration }, "Integration edited"),
-  );
-
-  server.registerTool(
-    "remove-integration",
-    {
-      description:
-        "Delete an integration. Fails naming aggregate connection and query counts if anything depends on it -- pass override to remove it anyway. Removing destroys its connections; queries stay stored but become unavailable.",
-      inputSchema: z.object({
-        integrationId: z.string(),
-        override: z.boolean().optional(),
-      }),
-    },
-    async ({ integrationId, override }) =>
-      apply(
-        {
-          type: "remove-integration",
-          integrationId,
-          override,
-        },
-        "Integration removed",
-      ),
-  );
-
-  server.registerTool(
-    "block-integration",
-    {
-      description:
-        "Suspend an integration: rejects new connections and query refreshes, but keeps every connection and query stored.",
-      inputSchema: z.object({ integrationId: z.string() }),
-    },
-    async ({ integrationId }) =>
-      apply(
-        { type: "block-integration", integrationId },
-        "Integration blocked",
-      ),
-  );
-
-  server.registerTool(
-    "unblock-integration",
-    {
-      description:
-        "Restore a blocked integration to normal connection and refresh behavior. No reauthorization is needed.",
-      inputSchema: z.object({ integrationId: z.string() }),
-    },
-    async ({ integrationId }) =>
-      apply(
-        { type: "unblock-integration", integrationId },
-        "Integration unblocked",
-      ),
-  );
-
-  server.registerTool(
-    "set-integration-retention-policy",
-    {
-      description:
-        "Set how many days an unused dynamic integration is kept before it is automatically removed. Never applies to a default or recommended integration.",
-      inputSchema: z.object({ retentionDays: z.number().int().positive() }),
-    },
-    async ({ retentionDays }) =>
-      apply(
-        { type: "set-integration-retention-policy", retentionDays },
-        "Retention policy updated",
-      ),
   );
 
   server.registerTool(
