@@ -837,16 +837,14 @@ async function blockedIntegrationNotices(
 
   const configuration = await readConfiguration(dependencies.persistence);
   const integrations = await readIntegrations(dependencies, configuration);
-  const blocked = integrations.filter(
-    (integration) => integration.state === "blocked",
+  const connected = new Set(
+    await dependencies.connections.listEntryIdsForOwner(caller.user),
   );
-  const connectedFlags = await Promise.all(
-    blocked.map((integration) =>
-      dependencies.connections!.get(caller.user!, integration.id),
-    ),
-  );
-  return blocked
-    .filter((_, index) => connectedFlags[index] !== undefined)
+  return integrations
+    .filter(
+      (integration) =>
+        integration.state === "blocked" && connected.has(integration.id),
+    )
     .map((integration) => integration.id);
 }
 

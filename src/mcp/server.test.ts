@@ -53,6 +53,11 @@ function createMemoryConnectionStore(): ConnectionStore {
         existingKey.endsWith(` ${catalogEntryId}`),
       ).length;
     },
+    listEntryIdsForOwner: async (user) => {
+      return [...values.keys()]
+        .filter((existingKey) => existingKey.startsWith(`${user} `))
+        .map((existingKey) => existingKey.slice(user.length + 1));
+    },
   };
 }
 

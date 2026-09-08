@@ -72,6 +72,10 @@ function createMemoryConnectionStore(): ConnectionStore {
       [...values.keys()].filter((existingKey) =>
         existingKey.endsWith(` ${catalogEntryId}`),
       ).length,
+    listEntryIdsForOwner: async (user) =>
+      [...values.keys()]
+        .filter((existingKey) => existingKey.startsWith(`${user} `))
+        .map((existingKey) => existingKey.slice(user.length + 1)),
   };
 }
 
@@ -1273,6 +1277,41 @@ describe("integration blocking (#92)", () => {
     await expect(
       service.blockedIntegrationNotices("bob-token"),
     ).resolves.toEqual([]);
+  });
+
+  test("blockedIntegrationNotices never decrypts a credential to answer its question", async () => {
+    const path = join(
+      await mkdtemp(join(tmpdir(), "notices-connections-")),
+      "connections.json",
+    );
+    const realBox = createSecretBox(randomBytes(32));
+    const connections = createEncryptedConnectionStore(path, {
+      seal: realBox.seal,
+      open: async () => {
+        throw new Error(
+          "open should never be called by blockedIntegrationNotices",
+        );
+      },
+    });
+    const authStore = {
+      resolve: async (credential: string) =>
+        credential === "alice-token"
+          ? { user: "alice", role: "user" }
+          : undefined,
+    };
+    const service = createService({
+      persistence: createMemoryPersistence(withTeamCalendar),
+      connections,
+      authStore,
+    });
+    await service.connect("team-calendar", "alice-secret", "alice-token");
+    await service.apply([
+      { type: "block-integration", integrationId: "team-calendar" },
+    ]);
+
+    await expect(
+      service.blockedIntegrationNotices("alice-token"),
+    ).resolves.toEqual(["team-calendar"]);
   });
 });
 

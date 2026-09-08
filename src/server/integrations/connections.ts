@@ -19,6 +19,8 @@ export interface ConnectionStore {
   removeAllForEntry(catalogEntryId: string): Promise<void>;
   /** How many users currently hold a connection to one catalog entry — how the retention reconciler (#89) detects a dynamic entry going unused. */
   countForEntry(catalogEntryId: string): Promise<number>;
+  /** The catalog entries one user holds a connection to — read from the cleartext envelope, never decrypting (D41). */
+  listEntryIdsForOwner(user: string): Promise<string[]>;
 }
 
 /**
@@ -145,6 +147,12 @@ export function createEncryptedConnectionStore(
       return connections.filter(
         (connection) => connection.catalogEntryId === catalogEntryId,
       ).length;
+    },
+    async listEntryIdsForOwner(user) {
+      const connections = await readConnections(path);
+      return connections
+        .filter((connection) => connection.owner === user)
+        .map((connection) => connection.catalogEntryId);
     },
   };
 }

@@ -60,6 +60,10 @@ function createMemoryConnectionStore(): ConnectionStore {
       [...values.keys()].filter((existingKey) =>
         existingKey.endsWith(` ${catalogEntryId}`),
       ).length,
+    listEntryIdsForOwner: async (user) =>
+      [...values.keys()]
+        .filter((existingKey) => existingKey.startsWith(`${user} `))
+        .map((existingKey) => existingKey.slice(user.length + 1)),
   };
 }
 
