@@ -237,6 +237,20 @@ const tokenBlockSchema = z
 export type TokenBlock = z.infer<typeof tokenBlockSchema>;
 
 /**
+ * A preset's `themeMapping` (D27, #96): carried for shape-completeness
+ * against `globals-example.css`'s `@theme inline` block but never itself
+ * emitted into CSS today (`tokenSetCss` only reads `light`/`dark`/`radius`)
+ * — bounded anyway, both key count and key length, so it stays closed the
+ * day something does start emitting it. Limits are generous headroom over
+ * that block's real 38 entries and 35-char longest key.
+ */
+const themeMappingSchema = z
+  .record(z.string().min(1).max(64), cssTokenValueSchema)
+  .refine((mapping) => Object.keys(mapping).length <= 40, {
+    message: "themeMapping supports at most 40 entries",
+  });
+
+/**
  * shadcn's one supported base-rules bundle (#96) — closed to a single named
  * identifier rather than raw CSS text, so a preset opts into the same
  * Tailwind reset every theme in this project uses instead of authoring its
@@ -256,7 +270,7 @@ export const baseRulesSchema = z.literal("default");
  */
 export const presetSchema = z
   .object({
-    themeMapping: z.record(z.string().min(1), cssTokenValueSchema),
+    themeMapping: themeMappingSchema,
     light: tokenBlockSchema,
     dark: tokenBlockSchema,
     radius: cssTokenValueSchema,
@@ -299,7 +313,7 @@ export const userAppearanceSchema = z
     menuAccent: menuAccentSchema,
     // A user's own presets (#96) — theirs by structure, no permission gates
     // adding, updating, removing, or selecting one (D35).
-    personalPresets: z.array(namedPresetSchema),
+    personalPresets: z.array(namedPresetSchema).max(50),
     selectedPreset: selectedPresetSchema.optional(),
   })
   .strict();
