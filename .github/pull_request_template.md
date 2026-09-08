@@ -23,9 +23,7 @@ Closes #
 ## Key changes
 
 -
--
-
----
+- ***
 
 ## Scope and impact
 
