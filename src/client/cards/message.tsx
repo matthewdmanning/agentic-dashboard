@@ -1,12 +1,16 @@
-import { createElement } from "react";
-import type * as z from "zod/v4";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
-import { cardTemplateSchemas } from "../../contract";
-import type { CardTemplate } from "./index";
+export interface MessageCardData {
+  message: string;
+}
 
-export type MessageCardData = z.infer<typeof cardTemplateSchemas.message>;
-
-export const messageCard: CardTemplate<MessageCardData> = {
-  schema: cardTemplateSchemas.message,
-  Component: ({ data }) => createElement("p", null, data.message),
-};
+export function MessageCard({ data }: { data: MessageCardData }) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Message</CardTitle>
+      </CardHeader>
+      <CardContent>{data.message}</CardContent>
+    </Card>
+  );
+}

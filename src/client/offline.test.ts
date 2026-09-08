@@ -22,7 +22,14 @@ function createMemoryStore(): KeyValueStore {
   };
 }
 
-const setFontScale: Mutation = { type: "set-font-scale", fontScale: 1.2 };
+const editTheme: Mutation = {
+  type: "edit-theme",
+  theme: { id: "calm", settings: { density: "compact" } },
+};
+const editThemeAgain: Mutation = {
+  type: "edit-theme",
+  theme: { id: "calm", settings: { density: "comfortable" } },
+};
 const addIntegration: Mutation = {
   type: "add-integration",
   integration: { id: "example", type: "example-service", settings: {} },
@@ -35,16 +42,16 @@ describe("offline cache", () => {
 
     writeCachedDashboard(store, {
       dashboard: defaultDashboardConfiguration.dashboard,
-      fontScale: 1,
+      themes: [{ id: "calm", settings: {} }],
     });
     writeCachedDashboard(store, {
       dashboard: defaultDashboardConfiguration.dashboard,
-      fontScale: 1.5,
+      themes: [{ id: "calm", settings: { density: "compact" } }],
     });
 
     expect(readCachedDashboard(store)).toEqual({
       dashboard: defaultDashboardConfiguration.dashboard,
-      fontScale: 1.5,
+      themes: [{ id: "calm", settings: { density: "compact" } }],
     });
   });
 
@@ -52,7 +59,7 @@ describe("offline cache", () => {
     const store = createMemoryStore();
     store.setItem(
       "dashboard-cache:home",
-      JSON.stringify({ dashboard: { id: "home" }, fontScale: "not-a-number" }),
+      JSON.stringify({ dashboard: { id: "home" }, themes: "not-an-array" }),
     );
 
     expect(readCachedDashboard(store)).toBeUndefined();
@@ -69,12 +76,12 @@ describe("offline cache", () => {
 describe("mutation queue", () => {
   test("an integrations mutation is never queued", () => {
     expect(requiresLiveService([addIntegration])).toBe(true);
-    expect(requiresLiveService([setFontScale])).toBe(false);
+    expect(requiresLiveService([editTheme])).toBe(false);
   });
 
   test("a queued mutation applies after reconnect", async () => {
     const store = createMemoryStore();
-    enqueue(store, [setFontScale]);
+    enqueue(store, [editTheme]);
     expect(pendingMutationCount(store)).toBe(1);
 
     const applied: (readonly Mutation[])[] = [];
@@ -82,14 +89,14 @@ describe("mutation queue", () => {
       applied.push(mutations);
     });
 
-    expect(applied).toEqual([[setFontScale]]);
+    expect(applied).toEqual([[editTheme]]);
     expect(dropped).toEqual([]);
     expect(pendingMutationCount(store)).toBe(0);
   });
 
   test("a permission denial on replay drops the group and reports it", async () => {
     const store = createMemoryStore();
-    enqueue(store, [setFontScale]);
+    enqueue(store, [editTheme]);
 
     const { dropped } = await replayQueue(store, async () => {
       throw new RequestFailure("permission-denied", "Permission denied");
@@ -102,7 +109,9 @@ describe("mutation queue", () => {
 
   test("an unknown-id failure on replay drops the group and reports it", async () => {
     const store = createMemoryStore();
-    enqueue(store, [{ type: "edit-theme", theme: { id: "gone", settings: {} } }]);
+    enqueue(store, [
+      { type: "edit-theme", theme: { id: "gone", settings: {} } },
+    ]);
 
     const { dropped } = await replayQueue(store, async () => {
       throw new RequestFailure("unknown-id", "Unknown theme: gone");
@@ -114,8 +123,8 @@ describe("mutation queue", () => {
 
   test("a transport failure stops replay and leaves the queue intact", async () => {
     const store = createMemoryStore();
-    enqueue(store, [setFontScale]);
-    enqueue(store, [{ type: "set-font-scale", fontScale: 1.8 }]);
+    enqueue(store, [editTheme]);
+    enqueue(store, [editThemeAgain]);
 
     const attempts: (readonly Mutation[])[] = [];
     const { dropped } = await replayQueue(store, async (mutations) => {
@@ -123,15 +132,15 @@ describe("mutation queue", () => {
       throw new TypeError("Failed to fetch");
     });
 
-    expect(attempts).toEqual([[setFontScale]]);
+    expect(attempts).toEqual([[editTheme]]);
     expect(dropped).toEqual([]);
     expect(pendingMutationCount(store)).toBe(2);
   });
 
   test("replay resumes past what already succeeded or was dropped", async () => {
     const store = createMemoryStore();
-    enqueue(store, [setFontScale]);
-    enqueue(store, [{ type: "set-font-scale", fontScale: 1.8 }]);
+    enqueue(store, [editTheme]);
+    enqueue(store, [editThemeAgain]);
 
     let call = 0;
     await replayQueue(store, async () => {

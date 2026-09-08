@@ -3,7 +3,7 @@ import type { Mutation, ReadableDashboard } from "../contract";
 /** The categories Settings edits, each absent when the caller may not read it. */
 export type DashboardSettings = Pick<
   ReadableDashboard,
-  "dashboard" | "integrations" | "themes" | "fontScale"
+  "dashboard" | "integrations" | "themes"
 >;
 
 function sameValue(left: unknown, right: unknown): boolean {
@@ -23,13 +23,6 @@ function presentationMutations(
   ) {
     mutations.push({ type: "edit-dashboard", dashboard: settings.dashboard });
   }
-  if (
-    settings.fontScale !== undefined &&
-    settings.fontScale !== initial.fontScale
-  ) {
-    mutations.push({ type: "set-font-scale", fontScale: settings.fontScale });
-  }
-
   if (settings.themes && initial.themes) {
     const before = new Map(initial.themes.map((theme) => [theme.id, theme]));
     const after = new Set(settings.themes.map(({ id }) => id));

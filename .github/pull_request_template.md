@@ -29,14 +29,15 @@ Closes #
 
 ### Affected areas
 
-- [ ] Screens / navigation
-- [ ] Camera
-- [ ] Submission flow
-- [ ] Auth
-- [ ] API
-- [ ] Permissions
-- [ ] Analytics
-- [ ] UX / design
+- [ ] Client (`src/client`)
+- [ ] Service (`src/service`)
+- [ ] Server / HTTP adapter (`src/server`)
+- [ ] MCP server (`src/mcp`)
+- [ ] Contract / schemas (`src/contract`)
+- [ ] Card templates (`src/card-templates`)
+- [ ] Auth / roles (`src/auth`)
+- [ ] Integrations / connections
+- [ ] Appearance / theming
 - [ ] Tests
 - [ ] CI / tooling
 - [ ] Docs
@@ -57,10 +58,11 @@ If breaking:
 
 What did you run?
 
-- [ ] `npx expo lint`
-- [ ] `npx tsc --noEmit`
+- [ ] `npm run typecheck`
 - [ ] `npm test`
-- [ ] Manual testing on device/emulator
+- [ ] `npm run format:check`
+- [ ] `npm run build`
+- [ ] Manual verification (describe below)
 - [ ] Not applicable
 
 Steps to manually verify:

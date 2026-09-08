@@ -8,67 +8,82 @@ import { generateComponentSource } from "./codegen";
 describe("generateComponentSource", () => {
   it("renders a leaf node with no children", () => {
     const tree: CompositionNode = {
-      component: "Text",
+      component: "Badge",
       props: {},
       children: [],
     };
     expect(generateComponentSource(tree)).toMatchInlineSnapshot(`
-      "import { Text } from "react-aria-components";
+      "import { Badge } from "@/components/ui/badge";
 
       export function GeneratedCardTemplate() {
         return (
-          <Text />
+          <Badge />
         );
       }
       "
     `);
   });
 
-  it("renders nested children and string/number/boolean props", () => {
+  it("renders nested children, grouping imports by their shadcn source file", () => {
     const tree: CompositionNode = {
-      component: "GridList",
-      props: { "aria-label": "Do" },
+      component: "Card",
+      props: { size: "sm" },
       children: [
         {
-          component: "GridListItem",
-          props: { textValue: "Fix outage", index: 1, disabled: false },
-          children: [{ component: "Text", props: {}, children: [] }],
+          component: "CardHeader",
+          props: {},
+          children: [{ component: "CardTitle", props: {}, children: [] }],
+        },
+        {
+          component: "CardContent",
+          props: { "aria-live": "polite" },
+          children: [
+            {
+              component: "Badge",
+              props: { variant: "secondary" },
+              children: [],
+            },
+          ],
         },
       ],
     };
     const source = generateComponentSource(tree, "MyTemplate");
+    expect(source).toContain('import { Badge } from "@/components/ui/badge";');
     expect(source).toContain(
-      'import { GridList, GridListItem, Text } from "react-aria-components";',
+      'import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";',
     );
-    expect(source).toContain('export function MyTemplate()');
-    expect(source).toContain('<GridList aria-label="Do">');
-    expect(source).toContain(
-      '<GridListItem disabled={false} index={1} textValue="Fix outage">',
-    );
-    expect(source).toContain("<Text />");
-    expect(source).toContain("</GridListItem>");
-    expect(source).toContain("</GridList>");
+    expect(source).toContain("export function MyTemplate()");
+    expect(source).toContain('<Card size="sm">');
+    expect(source).toContain('<CardContent aria-live="polite">');
+    expect(source).toContain('<Badge variant="secondary" />');
+    expect(source).toContain("<CardTitle />");
+    expect(source).toContain("</CardHeader>");
+    expect(source).toContain("</Card>");
   });
 
   it("is deterministic — same tree, same output", () => {
     const tree: CompositionNode = {
       component: "Button",
-      props: { isDisabled: true },
+      props: { disabled: true },
       children: [],
     };
     expect(generateComponentSource(tree)).toBe(generateComponentSource(tree));
   });
 
-  it("produces source that type-checks against react-aria-components' real types", () => {
+  // Spawns a real `tsc` — around four seconds alone, and longer sharing a
+  // machine with the assembly tests, which spawn their own. Well past vitest's
+  // five-second default, so it names its own.
+  it("produces source that type-checks against shadcn/ui's real component types", () => {
     const tree: CompositionNode = {
-      component: "GridList",
-      props: { "aria-label": "Do" },
+      component: "Card",
+      props: {},
       children: [
         {
-          component: "GridListItem",
-          props: { textValue: "Fix outage" },
-          children: [{ component: "Text", props: {}, children: [] }],
+          component: "CardHeader",
+          props: {},
+          children: [{ component: "CardTitle", props: {}, children: [] }],
         },
+        { component: "CardContent", props: {}, children: [] },
       ],
     };
     const source = generateComponentSource(tree);
@@ -82,16 +97,58 @@ describe("generateComponentSource", () => {
         "bin",
         "tsc",
       );
-      execFileSync(process.execPath, [tscBin, "--noEmit", "-p", "tsconfig.json"], {
-        cwd: process.cwd(),
-        stdio: "pipe",
-        encoding: "utf8",
-      });
+      execFileSync(
+        process.execPath,
+        [tscBin, "--noEmit", "-p", "tsconfig.json"],
+        {
+          cwd: process.cwd(),
+          stdio: "pipe",
+          encoding: "utf8",
+        },
+      );
     } catch (error) {
       const stdout = (error as { stdout?: string }).stdout ?? "";
       throw new Error(`tsc failed:\n${stdout}`);
     } finally {
       unlinkSync(file);
     }
-  });
+  }, 60_000);
+
+  it("fails a real component given a wrong prop type, not just an unknown one", () => {
+    const tree: CompositionNode = {
+      component: "Card",
+      props: { size: "huge" },
+      children: [],
+    };
+    const source = generateComponentSource(tree);
+    const file = join(
+      process.cwd(),
+      "src",
+      "card-templates",
+      "__smoke-bad.tsx",
+    );
+    writeFileSync(file, source);
+    try {
+      const tscBin = join(
+        process.cwd(),
+        "node_modules",
+        "typescript",
+        "bin",
+        "tsc",
+      );
+      expect(() =>
+        execFileSync(
+          process.execPath,
+          [tscBin, "--noEmit", "-p", "tsconfig.json"],
+          {
+            cwd: process.cwd(),
+            stdio: "pipe",
+            encoding: "utf8",
+          },
+        ),
+      ).toThrow();
+    } finally {
+      unlinkSync(file);
+    }
+  }, 60_000);
 });

@@ -1,46 +1,47 @@
 import type { ComponentType } from "react";
 import type * as z from "zod/v4";
-import type { cardTemplateSchemas } from "../../contract";
+import {
+  activeCardTemplateManifest,
+  type CardTemplateManifestEntry,
+} from "../../card-templates/manifest";
+import type { CardTemplateName } from "../../contract";
+import { MessageCard } from "./message";
 
 export interface CardTemplate<T> {
   schema: z.ZodType<T>;
   Component: ComponentType<{ data: T }>;
 }
 
-export { calendarCard, listCard, chartCard, tableCard } from "./display";
-export { messageCard } from "./message";
-
-import { calendarCard, listCard, chartCard, tableCard } from "./display";
-import { messageCard } from "./message";
-
-/** Each component's data type is derived from its schema, never asserted. */
-export type IncludedCardTemplates = {
-  [Name in keyof typeof cardTemplateSchemas]: CardTemplate<
-    z.infer<(typeof cardTemplateSchemas)[Name]>
-  >;
+const components: Record<string, ComponentType<{ data: unknown }>> = {
+  message: MessageCard as ComponentType<{ data: unknown }>,
 };
 
-export const includedCardTemplates: IncludedCardTemplates = {
-  message: messageCard,
-  table: tableCard,
-  list: listCard,
-  calendar: calendarCard,
-  chart: chartCard,
-};
+function toCardTemplate(
+  entry: CardTemplateManifestEntry,
+): CardTemplate<unknown> {
+  const Component = components[entry.name];
+  if (!Component) {
+    throw new Error(`Missing card template component: ${entry.name}`);
+  }
+  return { schema: entry.schema, Component };
+}
 
-/**
- * Which source file each template's export actually lives in — several
- * templates share `display.tsx`. Kept alongside `includedCardTemplates`
- * so the two never drift: this is the map the registry endpoint
- * (src/server/registry.ts) reads to find each item's real file.
- */
-export const cardTemplateSourceFiles: Record<
-  keyof IncludedCardTemplates,
-  string
-> = {
-  message: "message.tsx",
-  table: "display.tsx",
-  list: "display.tsx",
-  calendar: "display.tsx",
-  chart: "display.tsx",
-};
+/** The active manifest is the source of truth for renderable templates. */
+export const includedCardTemplates: Record<
+  CardTemplateName | string,
+  CardTemplate<unknown>
+> = Object.fromEntries(
+  Object.entries(activeCardTemplateManifest).map(([name, entry]) => [
+    name,
+    toCardTemplate(entry),
+  ]),
+);
+
+/** Compatibility view used by registry tests and callers that need a path. */
+export const cardTemplateSourceFiles: Record<string, string> =
+  Object.fromEntries(
+    Object.entries(activeCardTemplateManifest).map(([name, entry]) => [
+      name,
+      entry.sourceFile,
+    ]),
+  );

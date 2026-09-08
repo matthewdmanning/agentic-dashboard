@@ -1,0 +1,9 @@
+# Agent-local: vendored skill packs and worktrees. Neither is ours to format,
+# and a worktree checked out inside the repository would otherwise be linted
+# twice.
+.claude/
+.agents/skills/
+
+# Not ours to format.
+node_modules/
+dist/
