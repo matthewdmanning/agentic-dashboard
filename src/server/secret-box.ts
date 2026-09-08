@@ -289,3 +289,36 @@ export async function resolveSecretKeyRing(
 export function defaultSecretKeyRingPath(): string {
   return join(homedir(), ".dashboard", "secret-keys.json");
 }
+
+/** Env vars a hosted deployment sets to point at a managed secrets service instead of the local file (#98, D42). */
+export const managedSecretsUrlEnvVar = "DASHBOARD_MANAGED_SECRETS_URL";
+export const managedSecretsTokenEnvVar = "DASHBOARD_MANAGED_SECRETS_TOKEN";
+const managedSecretsFetchTimeoutMs = 5000;
+
+/**
+ * Resolves the key ring from a deployer-configured managed secrets service
+ * instead of a local file (#98, D42, extends D28/D41): an HTTPS GET against
+ * `url`, optionally bearer-authenticated, expecting the same JSON shape
+ * `resolveSecretKeyRing`'s file uses -- no vendor SDK, no key material ever
+ * written to disk. Requires `https:` -- both the bearer token and the
+ * returned key material would otherwise cross the network in the clear to
+ * anyone on-path. `fetchImpl` is injectable for tests, same pattern
+ * `google-calendar.ts`'s `FetchCalendar` already uses.
+ */
+export async function resolveManagedSecretKeyRing(
+  url: string,
+  token: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<SecretKeyRing> {
+  if (new URL(url).protocol !== "https:") {
+    throw new Error("Managed secrets URL must use https:");
+  }
+  const response = await fetchImpl(url, {
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+    signal: AbortSignal.timeout(managedSecretsFetchTimeoutMs),
+  });
+  if (!response.ok) {
+    throw new Error(`Managed secrets fetch failed: ${response.status}`);
+  }
+  return toKeyRing(keyRingFileSchema.parse(await response.json()));
+}

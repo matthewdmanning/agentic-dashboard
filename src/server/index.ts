@@ -30,6 +30,9 @@ import {
   createSecretBox,
   defaultRotationIntervalDays,
   defaultSecretKeyRingPath,
+  managedSecretsTokenEnvVar,
+  managedSecretsUrlEnvVar,
+  resolveManagedSecretKeyRing,
   rotationIntervalDaysEnvVar,
 } from "./secret-box";
 import { handleRegistryRequest } from "./registry";
@@ -423,14 +426,34 @@ async function startServer() {
   // One host-held key ring seals both stores (D28, D41, #91) — queries and
   // connections are the two callers D41 names for this seam, and the two
   // stores #91's rotation re-encrypts together.
-  const { ring } = await rotateSecretKeyIfDue(
-    {
-      keyRingPath: secretKeyRingPath,
-      connectionsPath,
-      queriesPath,
-    },
-    rotationIntervalDays,
-  );
+  //
+  // A managed secrets URL (#98, D42) switches custody of that ring to a
+  // deployer-configured service instead of this host's own file — nothing
+  // downstream changes. Local key rotation is a local-file concern (it
+  // writes the ring back to disk and re-encrypts local stores under a
+  // locally-generated key), so it doesn't run in managed mode; the managed
+  // service owns its own rotation cadence.
+  const managedSecretsUrl = process.env[managedSecretsUrlEnvVar];
+  // ponytail: fetched once at startup, not re-polled. If the managed service
+  // rotates its key and later prunes the old version before this process
+  // next restarts, anything sealed under that pruned key becomes unopenable.
+  // Add periodic re-fetch (or a refresh signal) if a deployment needs to
+  // survive a managed-side rotation without a restart.
+  const ring = managedSecretsUrl
+    ? await resolveManagedSecretKeyRing(
+        managedSecretsUrl,
+        process.env[managedSecretsTokenEnvVar],
+      )
+    : (
+        await rotateSecretKeyIfDue(
+          {
+            keyRingPath: secretKeyRingPath,
+            connectionsPath,
+            queriesPath,
+          },
+          rotationIntervalDays,
+        )
+      ).ring;
   const secretBox = createSecretBox(ring);
   const connections = createEncryptedConnectionStore(
     connectionsPath,

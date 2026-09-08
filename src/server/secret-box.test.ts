@@ -4,11 +4,12 @@ import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir, userInfo } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   createSecretBox,
   deriveKeyId,
+  resolveManagedSecretKeyRing,
   resolveSecretKeyRing,
   singleKeyRing,
   withNewCurrentKey,
@@ -154,5 +155,130 @@ describe("resolveSecretKeyRing", () => {
     const raw = JSON.parse(await readFile(path, "utf8"));
     expect(raw.currentKeyId).toBe(ring.currentKeyId);
     expect(typeof raw.keys[ring.currentKeyId]).toBe("string");
+  });
+});
+
+describe("resolveManagedSecretKeyRing (#98)", () => {
+  function keyRingFile(key: Buffer, createdAt = new Date()) {
+    return {
+      currentKeyId: deriveKeyId(key),
+      currentKeyCreatedAt: createdAt.toISOString(),
+      keys: { [deriveKeyId(key)]: key.toString("hex") },
+    };
+  }
+
+  test("fetches the ring over HTTPS and the resulting box round-trips", async () => {
+    const key = randomBytes(32);
+    const fetchImpl = vi.fn(async () => Response.json(keyRingFile(key)));
+
+    const ring = await resolveManagedSecretKeyRing(
+      "https://secrets.example/ring",
+      undefined,
+      fetchImpl,
+    );
+    const box = createSecretBox(ring);
+    const sealed = await box.seal("alice", "top secret");
+    await expect(box.open("alice", sealed)).resolves.toBe("top secret");
+  });
+
+  test("sends a bearer token when given, omits the header otherwise", async () => {
+    const key = randomBytes(32);
+    const fetchImpl = vi.fn(async () => Response.json(keyRingFile(key)));
+
+    await resolveManagedSecretKeyRing(
+      "https://secrets.example/ring",
+      "s3cr3t",
+      fetchImpl,
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://secrets.example/ring",
+      expect.objectContaining({
+        headers: { authorization: "Bearer s3cr3t" },
+      }),
+    );
+
+    fetchImpl.mockClear();
+    await resolveManagedSecretKeyRing(
+      "https://secrets.example/ring",
+      undefined,
+      fetchImpl,
+    );
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://secrets.example/ring",
+      expect.objectContaining({ headers: undefined }),
+    );
+  });
+
+  test("a non-ok response throws", async () => {
+    await expect(
+      resolveManagedSecretKeyRing(
+        "https://secrets.example/ring",
+        undefined,
+        async () => new Response("unavailable", { status: 503 }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("a malformed body throws via the existing key-ring schema", async () => {
+    await expect(
+      resolveManagedSecretKeyRing(
+        "https://secrets.example/ring",
+        undefined,
+        async () => Response.json({ not: "a key ring" }),
+      ),
+    ).rejects.toThrow();
+  });
+
+  test("still opens a value sealed under a non-current key (managed service already rotated once)", async () => {
+    const oldKey = randomBytes(32);
+    const newKey = randomBytes(32);
+    const sealed = await createSecretBox(oldKey).seal("alice", "top secret");
+    const file = {
+      currentKeyId: deriveKeyId(newKey),
+      currentKeyCreatedAt: new Date().toISOString(),
+      keys: {
+        [deriveKeyId(oldKey)]: oldKey.toString("hex"),
+        [deriveKeyId(newKey)]: newKey.toString("hex"),
+      },
+    };
+
+    const ring = await resolveManagedSecretKeyRing(
+      "https://secrets.example/ring",
+      undefined,
+      async () => Response.json(file),
+    );
+
+    await expect(createSecretBox(ring).open("alice", sealed)).resolves.toBe(
+      "top secret",
+    );
+  });
+
+  test("rejects a non-https URL before ever fetching", async () => {
+    const fetchImpl = vi.fn();
+
+    await expect(
+      resolveManagedSecretKeyRing(
+        "http://secrets.example/ring",
+        undefined,
+        fetchImpl,
+      ),
+    ).rejects.toThrow();
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  test("the fetch receives an abort signal (startup timeout wiring)", async () => {
+    const key = randomBytes(32);
+    const fetchImpl = vi.fn(async () => Response.json(keyRingFile(key)));
+
+    await resolveManagedSecretKeyRing(
+      "https://secrets.example/ring",
+      undefined,
+      fetchImpl,
+    );
+
+    expect(fetchImpl).toHaveBeenCalledWith(
+      "https://secrets.example/ring",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 });
