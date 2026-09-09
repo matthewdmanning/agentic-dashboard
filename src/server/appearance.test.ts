@@ -7,7 +7,10 @@ import { encodeUserPathSegment } from "../auth";
 import {
   baseColours,
   defaultUserAppearance,
+  menuAccents,
+  menuColours,
   presetTokens,
+  type NamedPreset,
   type UserAppearance,
 } from "../contract";
 import {
@@ -181,6 +184,34 @@ function declarationsIn(css: string, selector: string): Record<string, string> {
   );
 }
 
+/** Every `--menu-*` declaration anywhere in the stylesheet, as `{ token: value }` — the menu block is emitted once, so unlike `declarationsIn` there is no selector ambiguity to resolve. */
+function menuDeclarations(css: string): Record<string, string> {
+  return Object.fromEntries(
+    [...css.matchAll(/--menu-([\w-]+):\s*([^;]+);/g)].map((match) => [
+      match[1],
+      match[2].trim(),
+    ]),
+  );
+}
+
+/** A minimal but complete preset (#96), every token filled with the same placeholder value so a test can assert on shape rather than colour. */
+function samplePreset(fill: string): NamedPreset {
+  return {
+    id: "sample",
+    preset: {
+      themeMapping: {},
+      light: Object.fromEntries(
+        presetTokens.map((token) => [token, fill]),
+      ) as never,
+      dark: Object.fromEntries(
+        presetTokens.map((token) => [token, fill]),
+      ) as never,
+      radius: "0.5rem",
+      baseRules: "default",
+    },
+  };
+}
+
 describe("appearanceCss (D26, #95)", () => {
   test("the neutral base colour reproduces styles.css token for token, light and dark", async () => {
     // `styles.css` is the project's own neutral stylesheet, so generating
@@ -268,6 +299,69 @@ describe("appearanceCss (D26, #95)", () => {
     expect(css).toContain("--heading-font: ui-monospace");
     expect(css).toContain("--monospace-font: ui-sans-serif");
     expect(css).not.toContain("main :is(h1");
+  });
+
+  test("every menuColour value produces distinct menu tokens (#109)", () => {
+    const stylesheets = menuColours.map((menuColour) =>
+      appearanceCss(appearance({ menuColour })),
+    );
+
+    for (const css of stylesheets) {
+      const menu = menuDeclarations(css);
+      expect(menu.background).toBeTruthy();
+      expect(menu.foreground).toBeTruthy();
+    }
+    expect(
+      new Set(stylesheets.map((css) => menuDeclarations(css).background)).size,
+    ).toBe(menuColours.length);
+  });
+
+  test("every menuAccent value produces distinct menu tokens (#109)", () => {
+    const stylesheets = menuAccents.map((menuAccent) =>
+      appearanceCss(appearance({ menuAccent })),
+    );
+
+    for (const css of stylesheets) {
+      expect(menuDeclarations(css).accent).toBeTruthy();
+    }
+    expect(
+      new Set(stylesheets.map((css) => menuDeclarations(css).accent)).size,
+    ).toBe(menuAccents.length);
+  });
+
+  test("menu tokens appear on both the preset path and the base-colour path (#109)", () => {
+    const baseColourStylesheet = appearanceCss(
+      appearance({ baseColour: "slate" }),
+    );
+    expect(menuDeclarations(baseColourStylesheet).background).toBeTruthy();
+    // The base-colour path never sets `--radius` (only a preset's `radius`
+    // reaches `tokenSetCss`) — its absence here is what proves this
+    // assertion actually observed the base-colour path.
+    expect(baseColourStylesheet).not.toContain("--radius:");
+
+    const preset = samplePreset("oklch(0.5 0 0)");
+    const presetStylesheet = appearanceCss(
+      appearance({ selectedPreset: { source: "server", id: preset.id } }),
+      [preset],
+    );
+    expect(menuDeclarations(presetStylesheet).background).toBeTruthy();
+    // `resolveSelectedPreset` silently falls through to the base-colour path
+    // on any resolution miss, so a `--menu-background` present here isn't by
+    // itself proof the preset path ran — pin it to the preset's own radius,
+    // which only the preset path emits.
+    expect(presetStylesheet).toContain("--radius: 0.5rem");
+  });
+
+  test("no menuColour/menuAccent combination emits a hex literal (#109, ARCHITECTURE.md:95)", () => {
+    for (const menuColour of menuColours) {
+      for (const menuAccent of menuAccents) {
+        const css = appearanceCss(appearance({ menuColour, menuAccent }));
+        const menu = menuDeclarations(css);
+        for (const value of Object.values(menu)) {
+          expect(value).not.toMatch(/#[0-9a-fA-F]{3,8}/);
+        }
+      }
+    }
   });
 });
 
