@@ -11,6 +11,7 @@ import {
   type PartialUserAppearance,
 } from "../contract";
 import { createFileAppearanceStore } from "./appearance";
+import { credentialFromRequest } from "./credential";
 import {
   createFilePersistence,
   createService,
@@ -151,19 +152,6 @@ async function readDashboardScope(
     case "cardMappers":
       return service.read("cardMappers", credential);
   }
-}
-
-function credentialFromRequest(request: Request): string | undefined {
-  const authorization = request.headers.get("authorization");
-  if (authorization === null) return undefined;
-  const match = /^Bearer\s+(.+)$/i.exec(authorization);
-  if (!match) {
-    throw new ServiceFailure(
-      "unknown-credential",
-      "Invalid authorization header",
-    );
-  }
-  return match[1];
 }
 
 /**
@@ -675,16 +663,20 @@ async function startServer() {
     if (request.url?.startsWith("/r/")) {
       try {
         const result = await handleRegistryRequest(
-          new Request(`http://dashboard${request.url}`),
-          { manifestPath: cardTemplateManifestPath },
+          new Request(`http://dashboard${request.url}`, {
+            headers: authorizationHeaders(request),
+          }),
+          { manifestPath: cardTemplateManifestPath, service },
         );
         response.writeHead(result.status, Object.fromEntries(result.headers));
         response.end(Buffer.from(await result.arrayBuffer()));
       } catch (error) {
-        response.writeHead(400, { "content-type": "text/plain" });
-        response.end(
-          error instanceof Error ? error.message : "Registry request failed",
-        );
+        // Same door as every other route (D4): gated inside
+        // `handleRegistryRequest` via `service.read("cards", ...)`, so a
+        // denial surfaces here as a thrown ServiceFailure, not a status code.
+        const result = failureResponse(error);
+        response.writeHead(result.status, Object.fromEntries(result.headers));
+        response.end(Buffer.from(await result.arrayBuffer()));
       }
       return;
     }
