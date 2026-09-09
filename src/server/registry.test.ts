@@ -15,12 +15,28 @@ import {
   withTestCard,
 } from "../test-support/card-template";
 
+function createMemoryPersistence(): DashboardPersistence {
+  let configuration = structuredClone(defaultDashboardConfiguration);
+  return {
+    read: async () => structuredClone(configuration),
+    write: async (next) => {
+      configuration = structuredClone(next);
+    },
+  };
+}
+
 describe("dashboard registry", () => {
   useTestCardTemplates();
+
+  // No `localUserToken` configured (D35): an unproven caller resolves to the
+  // local user, matching a workspace that never provisioned one, so these
+  // stay focused on registry shape rather than authorization.
+  const service = createService({ persistence: createMemoryPersistence() });
 
   test("index lists every included card template, no file content", async () => {
     const response = await handleRegistryRequest(
       new Request("http://dashboard/r/registry.json"),
+      { service },
     );
     const body = await response.json();
 
@@ -36,6 +52,7 @@ describe("dashboard registry", () => {
   test("item endpoint serves the template's real source file, with content", async () => {
     const response = await handleRegistryRequest(
       new Request("http://dashboard/r/message.json"),
+      { service },
     );
     const body = await response.json();
 
@@ -50,6 +67,7 @@ describe("dashboard registry", () => {
   test("unknown item name 404s", async () => {
     const response = await handleRegistryRequest(
       new Request("http://dashboard/r/not-a-template.json"),
+      { service },
     );
     expect(response.status).toBe(404);
   });
@@ -57,6 +75,7 @@ describe("dashboard registry", () => {
   test("a template sharing a file with others still resolves its own item", async () => {
     const response = await handleRegistryRequest(
       new Request("http://dashboard/r/chart.json"),
+      { service },
     );
     const body = await response.json();
 
@@ -64,6 +83,64 @@ describe("dashboard registry", () => {
     expect(body.files[0].path).toBe(
       `src/client/cards/${cardTemplateSourceFiles.chart}`,
     );
+  });
+});
+
+describe("registry authorization", () => {
+  useTestCardTemplates();
+
+  // `localUserToken` configured (D35): an unproven caller resolves to
+  // `unauthenticatedUser`, so these exercise the same denial a real
+  // deployment gives an unauthenticated caller on `/r/*`.
+  function createGatedService() {
+    return createService({
+      persistence: createMemoryPersistence(),
+      localUserToken: "secret",
+    });
+  }
+
+  // `handleRegistryRequest` lets `ServiceFailure` propagate (the route in
+  // server/index.ts maps it to a status via `failureResponse`), so a denial
+  // here is a rejection, not a 200 with an empty body — proof enough that no
+  // file was ever read: the throw happens before `buildRegistryItem`.
+  test("an unauthenticated item request is denied, no source read", async () => {
+    await expect(
+      handleRegistryRequest(new Request("http://dashboard/r/message.json"), {
+        service: createGatedService(),
+      }),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  test("an unauthenticated index request is denied", async () => {
+    await expect(
+      handleRegistryRequest(new Request("http://dashboard/r/registry.json"), {
+        service: createGatedService(),
+      }),
+    ).rejects.toMatchObject({ code: "permission-denied" });
+  });
+
+  test("a valid local-user credential still serves the index and item with content", async () => {
+    const service = createGatedService();
+    const headers = { authorization: "Bearer secret" };
+
+    const index = await handleRegistryRequest(
+      new Request("http://dashboard/r/registry.json", { headers }),
+      { service },
+    );
+    expect(index.status).toBe(200);
+    const indexBody = await index.json();
+    expect(
+      indexBody.items.map((item: { name: string }) => item.name).sort(),
+    ).toEqual(Object.keys(includedCardTemplates).sort());
+
+    const item = await handleRegistryRequest(
+      new Request("http://dashboard/r/message.json", { headers }),
+      { service },
+    );
+    expect(item.status).toBe(200);
+    const itemBody = await item.json();
+    expect(itemBody.name).toBe("message");
+    expect(itemBody.files[0].content).toContain("CardView");
   });
 });
 
@@ -112,7 +189,7 @@ describe("a successful assemble makes the registry serve the promoted item", () 
 
       const index = await handleRegistryRequest(
         new Request("http://dashboard/r/registry.json"),
-        { manifestPath: cardTemplateManifestPath },
+        { manifestPath: cardTemplateManifestPath, service },
       );
       const indexBody = await index.json();
       expect(
@@ -121,7 +198,7 @@ describe("a successful assemble makes the registry serve the promoted item", () 
 
       const item = await handleRegistryRequest(
         new Request("http://dashboard/r/registry-test-assembled.json"),
-        { manifestPath: cardTemplateManifestPath },
+        { manifestPath: cardTemplateManifestPath, service },
       );
       const itemBody = await item.json();
       expect(itemBody.name).toBe("registry-test-assembled");

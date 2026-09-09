@@ -6,6 +6,8 @@ import {
   defaultCardTemplateManifestPath,
   readActiveCardTemplateManifest,
 } from "../card-templates/active-manifest";
+import type { DashboardService } from "../service";
+import { credentialFromRequest } from "./credential";
 
 /**
  * Serves this dashboard's card templates (D22) as a shadcn-compatible
@@ -104,11 +106,17 @@ const ITEM_PATH_PATTERN = /^\/r\/([a-z][a-z0-9-]*)\.json$/;
 
 export async function handleRegistryRequest(
   request: Request,
-  options?: { manifestPath?: string },
+  options: { service: DashboardService; manifestPath?: string },
 ): Promise<Response> {
+  // Same door as every `/api/*` route (D4): `cards: read` gates this file's
+  // source disclosure too, checked once at `service.read`'s enforcement
+  // point rather than a second check grown here. Denials propagate as a
+  // thrown `ServiceFailure` for the caller to map to a status code.
+  await options.service.read("cards", credentialFromRequest(request));
+
   const { pathname } = new URL(request.url);
   const manifest = await readActiveCardTemplateManifest(
-    options?.manifestPath ?? defaultCardTemplateManifestPath(),
+    options.manifestPath ?? defaultCardTemplateManifestPath(),
   );
 
   if (pathname === "/r/registry.json" || pathname === "/r/registry") {
