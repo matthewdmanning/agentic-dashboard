@@ -6,6 +6,8 @@ import { encodeUserPathSegment } from "../auth";
 import {
   userAppearanceSchema,
   type BaseColour,
+  type MenuAccent,
+  type MenuColour,
   type NamedPreset,
   type Preset,
   type TokenBlock,
@@ -387,10 +389,6 @@ const typesetFontStacks: Record<TypesetFontFamily, string> = {
  *
  * Size, leading, and flow are not tokens, so they stay a rule on `main` —
  * the dashboard root every card renders under.
- *
- * ponytail: `menuColour`/`menuAccent` are stored and generated into the
- * user's `components.json` but have no CSS rule here yet — this codebase has
- * no menu-shaped card template to style. Add the rule once one exists.
  */
 function typesetCss(typeset: Typeset): string {
   return `:root {
@@ -403,6 +401,89 @@ main {
   font-size: calc(1rem * ${typeset.size});
   line-height: ${typesetLeadingValues[typeset.leading]};
   text-wrap: ${typeset.flow};
+}
+`;
+}
+
+/**
+ * `menuColour`'s two axes (#109): which token pair the menu surface borrows,
+ * and whether that pair is swapped outright (`inverted`) or blended toward
+ * `transparent` on top of it (`*-translucent`). `--popover`/
+ * `--popover-foreground` are the tokens shadcn already uses for a floating
+ * surface, so `default` reuses them as-is; `inverted` swaps to
+ * `--popover-foreground`/`--popover` so the menu reads as a strong contrast
+ * band instead, mirroring how `--sidebar-primary` inverts for an active nav
+ * item. The `-translucent` variants keep the same pairing but run the
+ * background half through `color-mix()` toward `transparent`, so a menu can
+ * sit over a card without fully masking it — every value here is a semantic
+ * token or a `color-mix()` over one, never a hex literal or a palette-scale
+ * utility, per ARCHITECTURE.md:95.
+ */
+const menuSurfaceTokens: Record<
+  MenuColour,
+  { background: string; foreground: string }
+> = {
+  default: {
+    background: "var(--popover)",
+    foreground: "var(--popover-foreground)",
+  },
+  inverted: {
+    background: "var(--popover-foreground)",
+    foreground: "var(--popover)",
+  },
+  "default-translucent": {
+    background: "color-mix(in oklch, var(--popover) 85%, transparent)",
+    foreground: "var(--popover-foreground)",
+  },
+  "inverted-translucent": {
+    background:
+      "color-mix(in oklch, var(--popover-foreground) 85%, transparent)",
+    foreground: "var(--popover)",
+  },
+};
+
+/**
+ * `menuAccent`'s one axis (#109): how strongly a highlighted menu item
+ * stands out. `bold` uses `--accent` at full strength, the same token a
+ * selected sidebar item already uses; `subtle` blends `--accent` toward the
+ * menu's own background (`--menu-background`, defined alongside it below) so
+ * the highlight reads as a tint of the surface rather than a block of colour
+ * dropped on top of it.
+ */
+const menuAccentTokens: Record<MenuAccent, string> = {
+  bold: "var(--accent)",
+  subtle: "color-mix(in oklch, var(--accent) 60%, var(--menu-background))",
+};
+
+/**
+ * The viewing user's menu tokens (#109), composed into the cascade next to
+ * `typesetCss`. Unlike a typeset value, every menu value is a `var()`
+ * reference onto a token that itself differs between `:root` and `.dark`
+ * (`--popover`, `--accent`, ...) — a custom property resolves `var()`
+ * against the cascaded value on the *same* element it's declared on, not
+ * wherever that value logically "means" light or dark. Declaring
+ * `--menu-background` only once, under `:root`, would resolve it against
+ * `:root`'s own `--popover` and freeze it there for every descendant,
+ * including ones inside a `.dark` subtree — the exact `:root`-only mismatch
+ * `tokenSetCss` already exists to avoid for the token blocks themselves. So
+ * the same formula is written twice, once per selector: wherever `.dark`
+ * ends up mounted, the redeclaration under it re-resolves `--menu-*` against
+ * the `--popover`/`--accent` values active in that scope instead of
+ * inheriting a value frozen higher up.
+ */
+function menuTokensCss(menuColour: MenuColour, menuAccent: MenuAccent): string {
+  const surface = menuSurfaceTokens[menuColour];
+  const declarations = `  --menu-background: ${surface.background};
+  --menu-foreground: ${surface.foreground};
+  --menu-border: var(--border);
+  --menu-accent: ${menuAccentTokens[menuAccent]};
+  --menu-accent-foreground: var(--accent-foreground);`;
+  return `:root {
+${declarations}
+}
+
+.dark {
+${declarations}
 }
 `;
 }
@@ -436,6 +517,8 @@ function tokenSetCss(
   dark: TokenBlock,
   radius: string | undefined,
   typeset: Typeset,
+  menuColour: MenuColour,
+  menuAccent: MenuAccent,
 ): string {
   return `:root {
 ${radius === undefined ? "" : `  --radius: ${radius};\n`}${tokenBlockDeclarations(light)}
@@ -445,7 +528,8 @@ ${radius === undefined ? "" : `  --radius: ${radius};\n`}${tokenBlockDeclaration
 ${tokenBlockDeclarations(dark)}
 }
 
-${typesetCss(typeset)}`;
+${typesetCss(typeset)}
+${menuTokensCss(menuColour, menuAccent)}`;
 }
 
 /**
@@ -454,9 +538,21 @@ ${typesetCss(typeset)}`;
  * from the stored appearance every time, never cached, so no stale value can
  * survive a change.
  */
-function baseColourCss(baseColour: BaseColour, typeset: Typeset): string {
+function baseColourCss(
+  baseColour: BaseColour,
+  typeset: Typeset,
+  menuColour: MenuColour,
+  menuAccent: MenuAccent,
+): string {
   const scale = basePalette[baseColour];
-  return tokenSetCss(lightTokens(scale), darkTokens(scale), undefined, typeset);
+  return tokenSetCss(
+    lightTokens(scale),
+    darkTokens(scale),
+    undefined,
+    typeset,
+    menuColour,
+    menuAccent,
+  );
 }
 
 /**
@@ -491,6 +587,18 @@ export function appearanceCss(
 ): string {
   const preset = resolveSelectedPreset(appearance, serverPresets);
   return preset
-    ? tokenSetCss(preset.light, preset.dark, preset.radius, appearance.typeset)
-    : baseColourCss(appearance.baseColour, appearance.typeset);
+    ? tokenSetCss(
+        preset.light,
+        preset.dark,
+        preset.radius,
+        appearance.typeset,
+        appearance.menuColour,
+        appearance.menuAccent,
+      )
+    : baseColourCss(
+        appearance.baseColour,
+        appearance.typeset,
+        appearance.menuColour,
+        appearance.menuAccent,
+      );
 }
