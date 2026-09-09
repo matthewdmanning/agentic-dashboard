@@ -6,13 +6,13 @@ import type { CompositionNode } from "../contract";
 import { generateComponentSource } from "./codegen";
 
 describe("generateComponentSource", () => {
-  it("renders a leaf node with no children", () => {
+  it("renders a leaf node with no children", async () => {
     const tree: CompositionNode = {
       component: "Badge",
       props: {},
       children: [],
     };
-    expect(generateComponentSource(tree)).toMatchInlineSnapshot(`
+    await expect(generateComponentSource(tree)).resolves.toMatchInlineSnapshot(`
       "import { Badge } from "@/components/ui/badge";
 
       export function GeneratedCardTemplate() {
@@ -24,7 +24,7 @@ describe("generateComponentSource", () => {
     `);
   });
 
-  it("renders nested children, grouping imports by their shadcn source file", () => {
+  it("renders nested children, grouping imports by their shadcn source file", async () => {
     const tree: CompositionNode = {
       component: "Card",
       props: { size: "sm" },
@@ -47,7 +47,7 @@ describe("generateComponentSource", () => {
         },
       ],
     };
-    const source = generateComponentSource(tree, "MyTemplate");
+    const source = await generateComponentSource(tree, "MyTemplate");
     expect(source).toContain('import { Badge } from "@/components/ui/badge";');
     expect(source).toContain(
       'import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";',
@@ -61,19 +61,21 @@ describe("generateComponentSource", () => {
     expect(source).toContain("</Card>");
   });
 
-  it("is deterministic — same tree, same output", () => {
+  it("is deterministic — same tree, same output", async () => {
     const tree: CompositionNode = {
       component: "Button",
       props: { disabled: true },
       children: [],
     };
-    expect(generateComponentSource(tree)).toBe(generateComponentSource(tree));
+    expect(await generateComponentSource(tree)).toBe(
+      await generateComponentSource(tree),
+    );
   });
 
   // Spawns a real `tsc` — around four seconds alone, and longer sharing a
   // machine with the assembly tests, which spawn their own. Well past vitest's
   // five-second default, so it names its own.
-  it("produces source that type-checks against shadcn/ui's real component types", () => {
+  it("produces source that type-checks against shadcn/ui's real component types", async () => {
     const tree: CompositionNode = {
       component: "Card",
       props: {},
@@ -86,7 +88,7 @@ describe("generateComponentSource", () => {
         { component: "CardContent", props: {}, children: [] },
       ],
     };
-    const source = generateComponentSource(tree);
+    const source = await generateComponentSource(tree);
     const file = join(process.cwd(), "src", "card-templates", "__smoke.tsx");
     writeFileSync(file, source);
     try {
@@ -114,13 +116,13 @@ describe("generateComponentSource", () => {
     }
   }, 60_000);
 
-  it("fails a real component given a wrong prop type, not just an unknown one", () => {
+  it("fails a real component given a wrong prop type, not just an unknown one", async () => {
     const tree: CompositionNode = {
       component: "Card",
       props: { size: "huge" },
       children: [],
     };
-    const source = generateComponentSource(tree);
+    const source = await generateComponentSource(tree);
     const file = join(
       process.cwd(),
       "src",

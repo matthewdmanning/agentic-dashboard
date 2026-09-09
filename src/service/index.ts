@@ -1272,18 +1272,18 @@ async function applyAssembledCardTemplates(
       })),
   );
 
-  const assembledCandidates: CardTemplateCandidate[] = mutations.map(
-    (mutation) => ({
+  const assembledCandidates: CardTemplateCandidate[] = await Promise.all(
+    mutations.map(async (mutation) => ({
       name: mutation.template,
       title: mutation.template,
       sourceFile: `${mutation.template}.tsx`,
       clientSourcePath: `src/client/cards/${mutation.template}.tsx`,
-      source: generateComponentSource(
+      source: await generateComponentSource(
         mutation.composition,
         toComponentName(mutation.template),
       ),
       jsonSchema: mutation.jsonSchema,
-    }),
+    })),
   );
 
   const result = await prepareCardTemplatePromotion(
