@@ -120,18 +120,18 @@ export const baseColourSchema = z.enum(baseColours);
 
 export type BaseColour = z.infer<typeof baseColourSchema>;
 
-/** Tailwind's `leading-*` scale, closed to a representative subset (D33). */
+/** Tailwind's `leading-*` scale, closed to a representative subset (D43). */
 export const typesetLeadings = ["tight", "normal", "relaxed"] as const;
 export const typesetLeadingSchema = z.enum(typesetLeadings);
 export type TypesetLeading = z.infer<typeof typesetLeadingSchema>;
 
-/** CSS `text-wrap`'s own keyword set (D33) — how a paragraph's lines wrap, never arbitrary CSS. */
+/** CSS `text-wrap`'s own keyword set (D43) — how a paragraph's lines wrap, never arbitrary CSS. */
 export const typesetFlows = ["wrap", "balance", "pretty"] as const;
 export const typesetFlowSchema = z.enum(typesetFlows);
 export type TypesetFlow = z.infer<typeof typesetFlowSchema>;
 
 /**
- * Generic font-family tokens (D33) rather than named webfonts: this project
+ * Generic font-family tokens (D43) rather than named webfonts: this project
  * bundles one font (Geist), so "pick a font" would otherwise mean bundling
  * more just to have choices. A token maps to a real font-stack, never
  * arbitrary CSS, and needs no new dependency to add a second real choice
@@ -141,7 +141,7 @@ export const typesetFontFamilies = ["sans", "serif", "mono"] as const;
 export const typesetFontFamilySchema = z.enum(typesetFontFamilies);
 export type TypesetFontFamily = z.infer<typeof typesetFontFamilySchema>;
 
-/** The complete typeset preference (#95) — `size` is `fontScale` under a name that matches the rest of this vocabulary (D33). */
+/** The complete typeset preference (#95) — `size` is `fontScale` under a name that matches the rest of this vocabulary (D43). */
 export const typesetSchema = z
   .object({
     size: z.number().min(0.75).max(2),

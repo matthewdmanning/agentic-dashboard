@@ -4,7 +4,6 @@ import { tmpdir, userInfo } from "node:os";
 import { mkdtemp, readFile, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { encodeUserPathSegment } from "../auth";
 import {
   defaultDashboardConfiguration,
   roles,
@@ -1983,63 +1982,6 @@ describe("user appearance (#94, #95)", () => {
     await expect(
       service.setAppearance({ baseColour: "gray" }),
     ).rejects.toMatchObject({ code: "appearance-unavailable" });
-  });
-
-  test("regenerates the caller's components.json from the project template as a whole, never a project-owned field (D33, D34)", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "appearance-components-"));
-    const templatePath = join(workspace, "components.json");
-    const componentsDir = join(workspace, "components");
-    await writeFile(
-      templatePath,
-      JSON.stringify({
-        style: "new-york",
-        rsc: false,
-        tsx: true,
-        tailwind: {
-          config: "",
-          css: "src/styles.css",
-          cssVariables: true,
-          prefix: "",
-          baseColor: "neutral",
-        },
-        iconLibrary: "lucide",
-        rtl: false,
-        aliases: { components: "@/components", utils: "@/lib/utils" },
-        // Stale template values — the generated file must reflect the
-        // caller's own appearance (its default, here) instead, proving these
-        // two fields are stripped from the template rather than carried
-        // through (D33).
-        menuColor: "inverted-translucent",
-        menuAccent: "bold",
-      }),
-    );
-    const appearance = createFileAppearanceStore(
-      join(workspace, "appearance.json"),
-    );
-    const service = createService({
-      persistence: createMemoryPersistence(),
-      appearance,
-      appearanceComponents: { dir: componentsDir, templatePath },
-    });
-
-    await service.setAppearance({ baseColour: "zinc" });
-
-    const generated = JSON.parse(
-      await readFile(
-        join(
-          componentsDir,
-          `${encodeUserPathSegment(userInfo().username)}.json`,
-        ),
-        "utf8",
-      ),
-    ) as Record<string, unknown>;
-    expect(generated.menuColor).toBe("default");
-    expect(generated.menuAccent).toBe("subtle");
-    expect(generated.style).toBe("new-york");
-    expect(generated.iconLibrary).toBe("lucide");
-    expect((generated.tailwind as { baseColor: string }).baseColor).toBe(
-      "zinc",
-    );
   });
 
   test("merges a partial update without resetting fields it does not name (#95)", async () => {

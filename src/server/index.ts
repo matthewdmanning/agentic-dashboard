@@ -400,14 +400,6 @@ async function startServer() {
   const appearancePath =
     process.env.DASHBOARD_APPEARANCE_PATH ??
     join(workspace, ".dashboard", "appearance.json");
-  // The project-owned template every user's effective `components.json` is
-  // generated from (D33, D34, #94) — the workspace copy `init-dashboard`
-  // seeds from the repo's own `components.json`.
-  const componentsTemplatePath =
-    process.env.DASHBOARD_COMPONENTS_PATH ?? join(workspace, "components.json");
-  const userComponentsDir =
-    process.env.DASHBOARD_USER_COMPONENTS_PATH ??
-    join(workspace, ".dashboard", "components");
   // Loopback proves same machine, not same user (D35). The token file does —
   // only the OS account running this process can read it.
   const localUserToken = await provisionLocalUserToken(localUserTokenPath);
@@ -461,10 +453,6 @@ async function startServer() {
     cardTemplateManifestPath,
     cardTemplateClientBuildPath,
     appearance,
-    appearanceComponents: {
-      dir: userComponentsDir,
-      templatePath: componentsTemplatePath,
-    },
   });
   // Cleanup runs at startup and after every connection change (#89) — no
   // scheduler. This is the startup half; `service` covers the other trigger.

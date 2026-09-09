@@ -1,9 +1,8 @@
-import { mkdtemp, readdir, readFile, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, test } from "vitest";
 
-import { encodeUserPathSegment } from "../auth";
 import {
   baseColours,
   defaultUserAppearance,
@@ -13,163 +12,11 @@ import {
   type NamedPreset,
   type UserAppearance,
 } from "../contract";
-import {
-  appearanceCss,
-  createFileAppearanceStore,
-  generateUserComponentsConfig,
-  readComponentsTemplate,
-  writeUserComponentsConfig,
-} from "./appearance";
+import { appearanceCss, createFileAppearanceStore } from "./appearance";
 
 function appearance(overrides: Partial<UserAppearance> = {}): UserAppearance {
   return { ...defaultUserAppearance, ...overrides };
 }
-
-describe("readComponentsTemplate (D33)", () => {
-  test("strips the user-owned fields a components.json on disk still carries", () => {
-    const template = readComponentsTemplate({
-      style: "new-york",
-      rsc: false,
-      tsx: true,
-      tailwind: {
-        config: "",
-        css: "src/styles.css",
-        cssVariables: true,
-        prefix: "",
-        baseColor: "neutral",
-      },
-      iconLibrary: "lucide",
-      rtl: false,
-      aliases: { components: "@/components", utils: "@/lib/utils" },
-      menuColor: "default",
-      menuAccent: "subtle",
-    });
-
-    expect(template).not.toHaveProperty("menuColor");
-    expect(template).not.toHaveProperty("menuAccent");
-    expect(template.tailwind).not.toHaveProperty("baseColor");
-    expect(template.style).toBe("new-york");
-  });
-});
-
-describe("generateUserComponentsConfig (D34, #95)", () => {
-  test("overlays base colour and menu fields, replacing the config as a whole", () => {
-    const template = readComponentsTemplate({
-      style: "new-york",
-      rsc: false,
-      tsx: true,
-      tailwind: {
-        config: "",
-        css: "src/styles.css",
-        cssVariables: true,
-        prefix: "",
-      },
-      iconLibrary: "lucide",
-      rtl: false,
-      aliases: {},
-    });
-
-    const config = generateUserComponentsConfig(
-      template,
-      appearance({
-        baseColour: "zinc",
-        menuColour: "inverted",
-        menuAccent: "bold",
-      }),
-    );
-
-    expect(config).toMatchObject({
-      style: "new-york",
-      iconLibrary: "lucide",
-      tailwind: { cssVariables: true, baseColor: "zinc" },
-      menuColor: "inverted",
-      menuAccent: "bold",
-    });
-  });
-});
-
-describe("writeUserComponentsConfig (D34, #94)", () => {
-  test("regenerates the whole file, so a later appearance never leaves a stale field behind", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "components-"));
-    const templatePath = join(workspace, "components.json");
-    const componentsDir = join(workspace, "components");
-    await writeFile(
-      templatePath,
-      JSON.stringify({
-        style: "new-york",
-        rsc: false,
-        tsx: true,
-        tailwind: {
-          config: "",
-          css: "src/styles.css",
-          cssVariables: true,
-          prefix: "",
-        },
-        iconLibrary: "lucide",
-        rtl: false,
-        aliases: {},
-      }),
-    );
-
-    await writeUserComponentsConfig(
-      componentsDir,
-      templatePath,
-      "alice",
-      appearance({ baseColour: "slate" }),
-    );
-    await writeUserComponentsConfig(
-      componentsDir,
-      templatePath,
-      "alice",
-      appearance({ baseColour: "stone" }),
-    );
-
-    const generated = JSON.parse(
-      await readFile(
-        join(componentsDir, `${encodeUserPathSegment("alice")}.json`),
-        "utf8",
-      ),
-    ) as { tailwind: { baseColor: string } };
-    expect(generated.tailwind.baseColor).toBe("stone");
-  });
-
-  test("an identity carrying path separators still writes one file inside the directory", async () => {
-    const workspace = await mkdtemp(join(tmpdir(), "components-"));
-    const templatePath = join(workspace, "components.json");
-    const componentsDir = join(workspace, "components");
-    await writeFile(
-      templatePath,
-      JSON.stringify({
-        style: "new-york",
-        rsc: false,
-        tsx: true,
-        tailwind: {
-          config: "",
-          css: "src/styles.css",
-          cssVariables: true,
-          prefix: "",
-        },
-        iconLibrary: "lucide",
-        rtl: false,
-        aliases: {},
-      }),
-    );
-
-    await writeUserComponentsConfig(
-      componentsDir,
-      templatePath,
-      "../../escaped",
-      appearance({ baseColour: "slate" }),
-    );
-
-    // Everything the directory holds is one encoded segment, so nothing was
-    // written beside or above it.
-    expect(await readdir(componentsDir)).toEqual([
-      `${encodeUserPathSegment("../../escaped")}.json`,
-    ]);
-    expect(await readdir(workspace)).toEqual(["components", "components.json"]);
-  });
-});
 
 /** The custom properties one selector's first block declares, as `{ token: value }`. */
 function declarationsIn(css: string, selector: string): Record<string, string> {
