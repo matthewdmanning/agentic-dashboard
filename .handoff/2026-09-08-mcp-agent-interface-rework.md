@@ -22,16 +22,16 @@ issue body as-is.
 
 1. **`assemble-card-template`'s `props` field is genuinely unvalidated.**
    `src/card-templates/codegen.ts:93`, `renderProps(props: Record<string,
-   unknown>)` serializes straight to JSX attributes, no allowlist. This is
-   *why* composition can reach real styling (Tailwind classNames pass through
+unknown>)` serializes straight to JSX attributes, no allowlist. This is
+   _why_ composition can reach real styling (Tailwind classNames pass through
    verbatim) — not a bug by itself, just worth knowing it's intentional
    (D22: `tsc` is the correctness gate, not a schema).
 
 2. **The theme system has no accent color, anywhere.** `src/styles.css`:
    every token is `oklch(L 0 0)` — zero chroma — except `--destructive:
-   oklch(0.577 0.245 27.325)` (reserved for error states). The token
+oklch(0.577 0.245 27.325)` (reserved for error states). The token
    literally named `--accent` (`oklch(0.97 0 0)`) carries no hue. This is a
-   **real design-token gap**, confirmed, and it's *why* every MCP-composed
+   **real design-token gap**, confirmed, and it's _why_ every MCP-composed
    card looks flat/gray regardless of how well an agent composes — no amount
    of prompting fixes a palette with no accent hue in it. **This is a
    theme-system problem, not an MCP-interface problem** — was mid-discussion
@@ -40,7 +40,7 @@ issue body as-is.
 
 3. **`read-appearance` already solves the styling-discovery gap — it's just not discoverable.**
    `AppearanceView` (src/service/index.ts:174) already includes a `css:
-   string` field — the full generated stylesheet with every semantic token
+string` field — the full generated stylesheet with every semantic token
    declared (`--primary`, `--accent`, etc., see `appearanceCss` in
    `src/server/appearance.ts:488`). `read-appearance` is already a registered
    MCP tool. The agent that filed the report never called it before
@@ -85,8 +85,8 @@ issue body as-is.
 The issue body as filed frames the composition problem as "no MCP-surfaced
 discovery mechanism for the component library" and suggests investigating
 "a richer tool description, an MCP resource, or a dedicated discovery tool."
-That's still right for the *component* half, but the original framing treated
-the *styling* half the same way — it isn't. Styling was already solvable via
+That's still right for the _component_ half, but the original framing treated
+the _styling_ half the same way — it isn't. Styling was already solvable via
 `read-appearance` before this session started; the real gap there is
 description wording, not new capability, and the actual visual flatness the
 agent saw is a **separate, real bug in the theme system** (finding #2), not
@@ -108,7 +108,7 @@ interrogation this session. Settled:
 - **Tools, not Resources, for the new discovery capability.** Per the
   skill's own decision table (`references/resources-and-prompts.md`):
   Resources are host-controlled ("the host decides what to pull into
-  context"); we want the *agent* to decide when to fetch component info,
+  context"); we want the _agent_ to decide when to fetch component info,
   mid-composition, on its own schedule. That's tool territory. Also: no
   confirmed host in this project's actual usage (Claude Code via `.mcp.json`,
   or `driver.ts`) reliably auto-loads resources without being asked, so
@@ -166,7 +166,7 @@ misleading. But don't act on this recommendation without asking — ask first.
 
 - The 15-of-28 table-driven MCP mutation tools (`mutationSchema.options` +
   `mutationToolDescriptors` in `mcp/server.ts`, `satisfies
-  Record<Mutation["type"], ...>` for compile-time exhaustiveness) — already
+Record<Mutation["type"], ...>` for compile-time exhaustiveness) — already
   implemented and merged to `main` (commit `38c2d73`, part of PR #100).
   Don't re-propose this refactor.
 - Issue #97 (queries in one encrypted store) — already implemented, closed.
