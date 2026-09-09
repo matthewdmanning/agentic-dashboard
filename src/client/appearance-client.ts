@@ -22,7 +22,7 @@ export async function loadAppearance(): Promise<AppearanceView> {
   return (await response.json()) as AppearanceView;
 }
 
-/** Merges an update onto the caller's stored appearance (D34, #95). Ungated — not a mutation, like `connectIntegration`. */
+/** Merges an update onto the caller's stored appearance (#95). Ungated — not a mutation, like `connectIntegration`. */
 export async function setAppearance(
   update: PartialUserAppearance,
 ): Promise<AppearanceView> {

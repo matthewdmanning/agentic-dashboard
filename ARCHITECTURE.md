@@ -34,9 +34,9 @@ Seven modules, as they exist today:
 Runtime dashboard data, the integration catalog, card-template candidates and
 active builds live at configurable paths outside `src/`. Roles live in a file
 `contract` imports; per-user appearance lives in its own file-backed store,
-one record per user, alongside the generated `components.json` each user's
-record produces; secrets live in the credential store. None of those is source
-code.
+one record per user; `components.json` stays the single project-root file,
+unaffected by any user's record; secrets live in the credential store. None
+of those is source code.
 
 The active card template is `message`, at `src/client/cards/message.tsx`,
 named by the default configuration's `welcome` card and served by the
@@ -96,14 +96,17 @@ Every colour a card template names is a semantic token from that set, never a he
 
 Base colour modifies a theme, controlling the token values generated at initialization or when a preset is applied. A preset is a whole token set in the format of `globals-example.css`, never a partial override. `admin` adds presets for everyone; a user may add their own, which no permission gates.
 
-A user owns runtime appearance; the project owns choices that change generated
-source. `style`, `tailwind.cssVariables`, `iconLibrary`, and `rtl`
-are project-owned. Base colour, typeset, `menuColor`, `menuAccent`, and
-personal presets are user-owned and constrained to shadcn's vocabulary.
-
-`components.json` is generated per user from a project-owned template plus the
-user's runtime choices rather than edited in place. Regeneration replaces
-the complete file but cannot change a project-owned field.
+There is one `components.json`, at the project root, identical for every
+user — users do not get their own, and cannot have custom cards or custom
+components: card templates and the component set are project-owned. A user
+owns runtime appearance; the project owns choices that change generated
+source. `style`, `tailwind.cssVariables`, `iconLibrary`, and `rtl` are
+project-owned, set once in the root file. Base colour, typeset, `menuColor`,
+`menuAccent`, and personal presets are user-owned and constrained to shadcn's
+vocabulary, but never touch `components.json` — they're stored per user
+(`AppearanceStore`) and expressed as CSS token values through the cascade
+(`appearanceCss`), so two users loading the dashboard see the same card
+templates and the same component set, differing only in these tokens.
 
 A running dashboard also serves its own wired-in card templates as a shadcn-compatible registry, over HTTP at `/r/registry.json` and `/r/<name>.json` — any shadcn-aware client, including one connected over `shadcn mcp`, can search, view, and add a template straight from the running dashboard.
 

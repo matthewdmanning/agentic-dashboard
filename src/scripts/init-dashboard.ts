@@ -38,8 +38,6 @@ async function main() {
   const catalogPath =
     process.env.DASHBOARD_INTEGRATION_CATALOG_PATH ??
     join(workspace, ".dashboard", "integrations.json");
-  const componentsPath =
-    process.env.DASHBOARD_COMPONENTS_PATH ?? join(workspace, "components.json");
   const manifestPath =
     process.env.DASHBOARD_TEMPLATE_MANIFEST_PATH ??
     defaultCardTemplateManifestPath(workspace);
@@ -68,13 +66,6 @@ async function main() {
 
   await createFileIntegrationCatalog(catalogPath).read();
   console.log(`Initialized integration catalog: ${catalogPath}`);
-
-  const projectComponents = await readFile(
-    join(process.cwd(), "components.json"),
-    "utf8",
-  );
-  await writeIfAbsent(componentsPath, projectComponents);
-  console.log(`Initialized shadcn configuration: ${componentsPath}`);
 
   if (
     await access(manifestPath)

@@ -127,14 +127,6 @@
     "terms": ["query", "card", "card template", "registry item"],
     "text": "A query belongs to its user, never the card; only the owner (and `admin`, for deletion) reaches it. `assemble-card-template` emits a real registry item (`name`, `type`, `files`, `dependencies`, `registryDependencies`) paired with its JSON Schema, rather than a bare file the registry wraps after the fact. `react-aria-components` leaves `package.json` outright; `@base-ui/react` stays. The original five card templates (raw HTML, no styling, pre-dating every later decision) were deleted outright; their schemas were kept for tests at `src/test-support/card-template.ts`. `message` is the first shadcn replacement (#82)."
   },
-  "D33": {
-    "terms": ["theme", "per-user configuration", "component library"],
-    "text": "A user says what things look like in the library's own vocabulary, never in CSS, never touching a card template's markup or a card's data. `components.json` fields that change generated source (`style`, `tailwind.cssVariables`, `iconLibrary`, `rtl`, plus structural fields) are project-owned; base colour, typeset, menu colour/accent, and presets are user-owned. `fontScale` is gone -- a typeset's `--typeset-size` is the same setting with a better vocabulary."
-  },
-  "D34": {
-    "terms": ["per-user configuration", "theme"],
-    "text": "`components.json` becomes generated per user from a project-owned template (structural/build-time fields) plus that user's runtime choices (base colour, typeset, menu fields), replaced as a whole rather than patched. Build-time fields stay fixed after initialization; changing one means reinitializing, not a preference change."
-  },
   "D35": {
     "terms": ["role", "account", "query", "connection"],
     "text": "The matrix governs shared and server-owned things only -- a user's queries, connections, appearance, and presets are theirs by structure, no category or level gates them (card mappers are the one exception, D38). Two default roles ship as ordinary configuration, not fixed names: `admin` (write on data/cards/presentation/integrations, read on roles) and `user` (write on data, read on cards/presentation/integrations, no access to roles). Roles are edited by editing the roles file the source imports -- same trust level as editing source -- and are not part of dashboard configuration. The local OS user resolves to full permissions (equal to admin); anyone else starts with none until authenticated, proven by a token written to `.dashboard/local-user-token`, hardened per platform (chmod 0600 POSIX; icacls on Windows, since chmod there only maps to a read-only flag)."
@@ -166,5 +158,9 @@
   "D42": {
     "terms": ["connection", "account"],
     "text": "The host-held key (D41) is right for a dashboard on its owner's own machine, wrong once someone else operates the host. `SecretBox` is the seam: file-backed stays the default locally, a hosted deployment supplies a managed-secrets-backed one via deployment configuration, not a code edit. `seal`/`open` are async because some managed services never release key material and perform encryption themselves -- a sync signature would rule that shape out entirely. No provider is canonical, same posture as integrations toward the services they connect to; nothing outside composition may construct its own box."
+  },
+  "D43": {
+    "terms": ["theme", "component library"],
+    "text": "A user says what things look like in the library's own vocabulary, never in CSS, and never touching a card template's markup or a card's data. Base colour, typeset, menu colour/accent, and presets are user-owned. `fontScale` is gone -- a typeset's `--typeset-size` is the same setting with a better vocabulary."
   }
 }

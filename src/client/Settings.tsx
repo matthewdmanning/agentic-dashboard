@@ -148,7 +148,7 @@ export function Settings({
   onSave: (mutations: readonly Mutation[]) => Promise<void>;
   /** Hands a connection's secret to the server. Not a mutation — see `contract`'s ban on a credential-shaped settings key. */
   onConnect: (integrationId: string, credential: string) => Promise<void>;
-  /** Merges an update onto the caller's own stored appearance (D34, #95). Not a mutation — applies immediately, like `onConnect`. */
+  /** Merges an update onto the caller's own stored appearance (#95). Not a mutation — applies immediately, like `onConnect`. */
   onSetAppearance: (update: PartialUserAppearance) => Promise<void>;
 }) {
   const initial: DashboardSettings = {

@@ -20,11 +20,7 @@ import {
   type StoredQuery,
   type UserQueryStore,
 } from "./queries";
-import {
-  appearanceCss,
-  writeUserComponentsConfig,
-  type AppearanceStore,
-} from "../server/appearance";
+import { appearanceCss, type AppearanceStore } from "../server/appearance";
 import { generateComponentSource } from "../card-templates/codegen";
 import {
   prepareCardTemplatePromotion,
@@ -162,12 +158,6 @@ interface Dependencies {
   cardTemplateClientBuildPath?: string;
   /** Where each user's own appearance preference lives (D33-D35, #94). */
   appearance?: AppearanceStore;
-  /**
-   * Where this build regenerates a user's effective `components.json`
-   * whenever their appearance changes (D34, #94). Omitted in tests that
-   * don't check the generated file.
-   */
-  appearanceComponents?: { dir: string; templatePath: string };
 }
 
 /** A user's own appearance preference plus its derived stylesheet (D26, #94) — what `readAppearance`/`setAppearance` hand back. */
@@ -265,11 +255,9 @@ export interface DashboardService {
   readAppearance(credential?: string): Promise<AppearanceView>;
   /**
    * Merges an update onto the caller's stored appearance (or the shared
-   * default) and regenerates their effective `components.json` from the
-   * project template (D33, D34, #95) — a caller states only the fields it is
-   * changing, but the file this writes is always replaced as a whole, never
-   * patched, so no project-owned or stale field can survive. Ungated for the
-   * same reason `readAppearance` is.
+   * default) (#95) — a caller states only the fields it is changing, but the
+   * merged record is always validated and persisted as a whole, never
+   * patched in place. Ungated for the same reason `readAppearance` is.
    */
   setAppearance(
     update: PartialUserAppearance,
@@ -895,12 +883,10 @@ async function readCallerAppearance(
 
 /**
  * Merges an update onto the caller's stored appearance (or the shared
- * default) and, when this build regenerates per-user `components.json`
- * files, rewrites theirs from the project template (D34, #94, #95) — the
- * caller states only the fields it is changing, but the merged result is
- * always validated and persisted as a whole, never a partial record.
- * Ungated like `connectIntegration` (D35): the caller resolved here is
- * always who the preference belongs to.
+ * default) (#94, #95) — the caller states only the fields it is changing,
+ * but the merged result is always validated and persisted as a whole, never
+ * a partial record. Ungated like `connectIntegration` (D35): the caller
+ * resolved here is always who the preference belongs to.
  */
 async function setCallerAppearance(
   dependencies: Dependencies,
@@ -928,14 +914,6 @@ async function setCallerAppearance(
   if (update.selectedPreset === null) delete merged.selectedPreset;
   const appearance = userAppearanceSchema.parse(merged);
   await dependencies.appearance.set(user, appearance);
-  if (dependencies.appearanceComponents) {
-    await writeUserComponentsConfig(
-      dependencies.appearanceComponents.dir,
-      dependencies.appearanceComponents.templatePath,
-      user,
-      appearance,
-    );
-  }
   const { presets } = await readConfiguration(dependencies.persistence);
   return { ...appearance, css: appearanceCss(appearance, presets) };
 }

@@ -1,8 +1,7 @@
 import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname } from "node:path";
 import * as z from "zod/v4";
 
-import { encodeUserPathSegment } from "../auth";
 import {
   userAppearanceSchema,
   type BaseColour,
@@ -73,98 +72,6 @@ export function createFileAppearanceStore(path: string): AppearanceStore {
       await writeJson(path, records);
     },
   };
-}
-
-// ---- project template / per-user components.json (D33, D34) ----
-
-/**
- * Every field shadcn's `components.json` defines that stays project-owned
- * (D33): everything except the user-owned runtime fields (`tailwind.baseColor`,
- * `menuColor`, `menuAccent`) that a viewing user's own appearance always
- * supplies instead.
- */
-export const componentsTemplateSchema = z
-  .object({
-    $schema: z.string().optional(),
-    style: z.string(),
-    rsc: z.boolean(),
-    tsx: z.boolean(),
-    tailwind: z
-      .object({
-        config: z.string(),
-        css: z.string(),
-        cssVariables: z.boolean(),
-        prefix: z.string(),
-      })
-      .strict(),
-    iconLibrary: z.string(),
-    rtl: z.boolean(),
-    aliases: z.record(z.string(), z.string()),
-    registries: z.record(z.string(), z.unknown()).optional(),
-  })
-  .strict();
-
-export type ComponentsTemplate = z.infer<typeof componentsTemplateSchema>;
-
-/**
- * Strips the known user-owned fields before validating, so the project's own
- * `components.json` — which also carries today's default user-owned values —
- * can serve as the template without those fields tripping `.strict()`.
- */
-export function readComponentsTemplate(raw: unknown): ComponentsTemplate {
-  const { menuColor, menuAccent, tailwind, ...rest } = raw as Record<
-    string,
-    unknown
-  >;
-  const { baseColor, ...tailwindRest } = (tailwind ?? {}) as Record<
-    string,
-    unknown
-  >;
-  return componentsTemplateSchema.parse({ ...rest, tailwind: tailwindRest });
-}
-
-/**
- * Overlays a user's runtime choices onto the project template (D34) —
- * replacing the effective config as a whole. No project-owned field can
- * survive here since `UserAppearance` never carries one.
- */
-export function generateUserComponentsConfig(
-  template: ComponentsTemplate,
-  appearance: UserAppearance,
-): Record<string, unknown> {
-  return {
-    ...template,
-    tailwind: { ...template.tailwind, baseColor: appearance.baseColour },
-    menuColor: appearance.menuColour,
-    menuAccent: appearance.menuAccent,
-  };
-}
-
-/**
- * Regenerates one user's effective `components.json` under `componentsDir`
- * whenever their appearance changes (D34) — the whole file, every time,
- * never a patch, so no stale or project-owned field can survive a
- * regeneration.
- *
- * The filename goes through `encodeUserPathSegment` rather than interpolating
- * the identity directly: an identity is an account name, not a validated path
- * component, so a `/`, a `\`, or a `..` in one would otherwise decide where
- * this writes. Encoding makes it exactly one segment, and makes two identities
- * that differ only in path-significant characters land on different files.
- */
-export async function writeUserComponentsConfig(
-  componentsDir: string,
-  templatePath: string,
-  user: string,
-  appearance: UserAppearance,
-): Promise<void> {
-  const template = readComponentsTemplate(
-    JSON.parse(await readFile(templatePath, "utf8")),
-  );
-  await writeJson(
-    join(componentsDir, `${encodeUserPathSegment(user)}.json`),
-    generateUserComponentsConfig(template, appearance),
-  );
 }
 
 // ---- semantic colour tokens (D26) ----
