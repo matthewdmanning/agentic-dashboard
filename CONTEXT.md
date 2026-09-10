@@ -1,64 +1,54 @@
 # Vocabulary
 
-Terms this project uses, and what each one means. Nothing else defines these; if you find a term defined elsewhere, that is a bug to fix rather than a second opinion.
+Terms this project defines, and what each one means. Nothing else defines these.
+
+## What this file does not define
+
+Everything below is shadcn's, and shadcn's documentation is the only source for it. This project uses these terms and never restates them:
+
+registry, registry item and its types, `registry.json`, `registry-item.json`, `shadcn build`, namespaces, registry authentication, `components.json` and every field in it, style, base colour, theme, chart colour, preset codes, typeset, icon library, RTL, dark mode, the CLI, and the MCP server.
+
+Where a term appears both here and there, shadcn's meaning wins. A definition of one of those terms appearing anywhere in this repository is a defect to delete, not a second opinion.
 
 ## Dashboard
 
-An arrangement or ordering of cards on a page or display.
+An ordered set of tile references.
 
-Concretely, a dashboard is a document: an ordered set of card references plus a theme reference. It holds no card contents of its own — a card lives in one pool that the dashboard references into.
+A dashboard holds no tile contents of its own — tiles live in one pool that the dashboard references into. Each reference carries which tile, its order, and its size.
 
-## Card template
+Size is `sm`, `md`, or `lg`. Three values, because "make it wider" has one answer at three and twelve answers at twelve. Nothing else about placement is expressible.
 
-The reusable unit: a registry item whose component is paired with a JSON schema describing the input data that component displays. The component can render any data that fits the schema.
+## Tile
 
-Every card template is a registry item, and a registry item is how one travels — added, served, and installed the way any shadcn item is.
+One placed thing on a dashboard: an id, a title, the registry item that renders it, and its state.
 
-A card template is whole-widget in grain — a calendar, an Eisenhower plot, a weather widget — not a layout atom. Card templates compose into other card templates.
+The registry item a tile names carries a JSON Schema in its `meta`, describing the data that item displays. The component's props type is derived from that schema, so the two cannot disagree — an item declaring data its component does not read fails to typecheck. A tile's state always fits the schema. Rendering is a straight read with no transform.
 
-A card template displays data that already fits its schema, and nothing more. It does not extract, remove, or reshape data.
-
-## Registry item
-
-shadcn's unit of distribution, and this project's too: a named JSON item carrying a `type`, the `files` it installs, and what it needs — `dependencies`, `registryDependencies`, and optionally `cssVars` and `css`. A registry serves items; `shadcn add` installs one. The schema is at <https://ui.shadcn.com/schema/registry-item.json>.
-
-A card template is one. So is anything else a composition needs to arrive with: `registry:component` and `registry:ui` for components, `registry:hook` for a hook, `registry:lib` for a utility module, `registry:theme` and `registry:style` for presentation, `cssVars` and `css` for tokens and stylesheet rules. An item can carry several files of different types at once, so a card template that needs a hook and a stylesheet ships them in the same item rather than as loose instructions.
-
-This is not a shape this project invented, and its vocabulary is shadcn's. Where a question about an item's fields is not answered here, the schema above answers it.
+A tile carries no query, no credential, no appearance, and no placement of its own — where it sits and how wide belong to the dashboard that references it. One registry item backs any number of tiles. Retitling a tile or changing its state never changes the registry item.
 
 ## Display-role key
 
-A key in a card template's schema. Display-role keys name **how a value is displayed**, not what it means in an external domain: `COL_HEADER`, `LIST_ITEMS`, and so on.
+A key in a registry item's schema. Display-role keys name **how a value is displayed**, not what it means in an external domain: `COL_HEADER`, `LIST_ITEMS`, and so on.
 
-This is what lets external data reach a template without new code — a card mapper maps incoming fields onto display-role keys. A card template's schema may be empty, for a template that takes no input data.
-
-## Card
-
-A card template in use: an id, a title, a reference to a card template, and its state. A card carries no queries — those are stored with the user who supplied them.
-
-A card carries no position, no size, and no theme of its own. Placement belongs to the dashboard that references it, and appearance belongs to the theme that dashboard names. Retitling a card or editing its state changes the card, never the card template. One card template backs any number of cards.
-
-## State
-
-The data a card currently displays, stored already fitting its card template's schema. Rendering is a straight read with no transform.
-
-State is changed by mutations, whatever produced them — a user edit or a query result reshaped by its card mapper. A card accepts manual edits to its state whether or not a query also writes it.
+This is what lets external data reach a tile without new code — a tile mapper maps incoming fields onto display-role keys. A schema may be empty, for an item that takes no input data.
 
 ## Query
 
-A request made against an integration, paired with the card mapper that reshapes the result. A query names the integration, the query to run against it, and the card mapper it maps the result through.
+A request made against an integration, paired with the tile mapper that reshapes the result. A query names the integration, what to run against it, and the mapper.
 
-A query is user-specific: it runs under the auth token of the user who supplied it, and it is stored with that user's data rather than on a card. One card can still be fed by several users at once.
+A query is user-specific: it runs under the credential of the user who supplied it, and is stored with that user rather than on a tile. One tile can be fed by several users at once.
 
-Two queries against the same calendar each run separately and hold their own copy of the result — nothing about a query is deduplicated or pooled.
+Two queries against the same integration run separately and hold their own copy of the result. Nothing about a query is deduplicated or pooled.
 
-## Card mapper
+## Tile mapper
 
-The mapping from a structured data source's shape onto a card template's display-role keys. Named `cardMapper` in code, after where it maps _to_ — a card — because what it maps _from_ is any structured data, not only an API response.
+The mapping from a structured data source's shape onto a registry item's display-role keys. Named for where it maps _to_, because what it maps _from_ is any structured data, not only an API response.
 
-A card mapper runs on the way in, before the result is stored as state, never at render time. It is deterministic: same input, same output, no IO, nothing read from outside its input. It is `"identity"` when the result already matches the schema, a fixed function bundled with the application shell, or a declarative mapping spec — field renaming, fallback chains, defaults, and array mapping.
+A tile mapper runs on the way in, before the result is stored, never at render time. It is deterministic: same input, same output, no IO, nothing read from outside its input.
 
-Not to be confused with a formatter, which is business logic that changes data _before_ it reaches a card. A card mapper only restates a shape; it does not decide anything about the data's meaning.
+A mapper is `"identity"` when the result already fits the schema, and otherwise an ordinary function typed against the schema — the same typecheck that gates a registry item's source gates its mappers. There is no mapping language to learn.
+
+Not a formatter. A formatter changes data before it reaches a tile and decides something about its meaning. A mapper only restates a shape.
 
 ## Mutation
 
@@ -66,85 +56,46 @@ A named change applied against current state — "mark this task complete" — r
 
 ## Dashboard configuration
 
-The persistent part of a dashboard — what remains when the data flowing through
-it changes. It holds cards, the dashboard, themes, the card mapper store, and
-project policy. The integration catalog has its own file-backed store. Roles
-live in a roles file the source imports. User appearance and connection
-credentials are not dashboard configuration.
+The persistent part of a dashboard: its tiles, its ordered references, the integration list, and the tile mapper store, plus project policy.
 
-## Integration catalog
-
-The project-wide, file-backed list of integration interfaces users may connect
-to. An entry says how the integration is identified, whether it is default,
-recommended, or dynamically added, and whether it is available or blocked.
+Roles are not in it. Appearance is not in it. Credentials are not in it.
 
 ## Integration
 
-A shared interface to an external service, defined once in the integration
-catalog. An integration exposes queries that cards draw from, and may also serve
-as a backup target.
+A shared interface to an external service, defined once. An integration exposes queries that tiles draw from, and may also serve as a backup target.
+
+Integrations are listed project-wide in dashboard configuration. An entry says how the integration is identified, whether it is default, recommended, or dynamically added, and whether it is available or blocked. Default and recommended entries persist; an unused dynamic entry expires after the retention period in project policy.
 
 ## Connection
 
-One user's authorization to one integration. It owns that user's encrypted
-credential and no shared integration definition.
+One user's authorization to one integration. It holds a reference to that user's credential, never the credential itself, and no part of the shared integration definition.
 
-## Theme
+Credentials are referenced by name in `${NAME}` form, following shadcn's registry-authentication convention. Resolution takes the name **and the acting account**, since one dashboard holds many people's credentials for the same integration and a name alone cannot tell them apart.
 
-A named set of presentational settings applied to UI components. A theme cannot execute code, read dashboard data, or alter behavior.
-
-A theme is the shared presentation a dashboard names. User-owned appearance
-modifies it through base colour, typeset, `menuColor`, `menuAccent`, and
-personal presets, all within the component library's vocabulary.
-
-Theme definitions live in dashboard configuration; a dashboard references one. A theme's settings are a selection within the dashboard's component library, never arbitrary CSS.
-
-## Component library
-
-The fixed set of presentational components and CSS a dashboard is built from — shadcn/ui, with Tailwind CSS as its theming framework. Declared once, when the dashboard is initialized. No mutation changes it: changing it is a source change.
-
-A theme can only set values the declared library defines. A card template composes that library's components directly — there is no separate structural layer underneath it. Where this project states no default of its own, shadcn/ui's default is the default.
-
-## Base color
-
-A modifier of a theme. It controls the default token values generated for the project at initialization or when a preset is applied.
-
-Persistent and per-user: the same card showing the same data renders in different base colours for different users, so base colour belongs to who is looking rather than to the card, the dashboard, or the data.
-
-## Preset
-
-A whole colour token set, in the format of `globals-example.css` — the `@theme inline` mapping, `:root` and `.dark` blocks defining every token as an `oklch(...)` value, and the `@layer base` rules. Not a partial override.
-
-## Per-user configuration
-
-The preferences that belong to one user rather than to the dashboard: base
-colour, typeset, `menuColor`, `menuAccent`, personal presets, and which preset
-is selected. They live in a file-backed appearance store holding one record
-per user, outside dashboard configuration and outside the credential store.
-
-A user owns appearance, expressed in the component library's own semantics — never in CSS. The server owns data and card templates; a user's appearance settings do not reach either.
-
-Secrets never live there.
+The value behind a name comes from an encrypted source, and rotation belongs to that source. The name never changes, and no secret crosses the interface — a caller passes a name and gets a request made on its behalf.
 
 ## Role
 
-A named bundle of permissions, assigned to an account. A role carries no credential. Roles live in a roles file the source imports, not in dashboard configuration: configuring them means editing that file, which takes the same access as editing source code. No mutation reaches a role.
+A named bundle of permissions, assigned to an account. A role carries no credential.
+
+Access is governed in four categories — `data`, `tiles`, `integrations`, `roles` — each holding `noAccess`, `read`, `edit`, or `write`, ranked so each level implies the ones below it. `edit` changes something that already exists; `write` also creates and destroys.
+
+One decision covers every request, taking the mutation's type, the acting account, and the target's owner. Something owned by the acting account needs no level, which falls out of that decision rather than sitting beside it as an exception.
+
+Roles live in a file the source imports, not in dashboard configuration. Configuring them takes the same access as editing source code. No mutation reaches a role.
 
 ## Account
 
-The identity a caller presents. An account holds a credential and the name of the role assigned to it, and lives in the auth store, outside dashboard data.
+The identity a caller presents. An account holds a credential reference and the name of the role assigned to it, and lives outside dashboard configuration.
 
 ## Project policy
 
-Project-wide lifecycle settings governed by the permission category for the
-thing they control — for example, how long an unused integration catalog entry
-is retained before removal.
+Project-wide lifecycle settings, each governed by the permission category for the thing it controls — for example, how long an unused integration entry is retained before removal.
 
 ## Settings
 
-The interface through which a user directly manages connections, themes, and
-their own appearance — base colour, typeset, menu colour, menu accent, and
-personal presets — without involving an agent. Roles are not edited here: they
-live in a file the source imports.
+The screen through which a person manages their connections and their own appearance, without involving an agent.
 
-Settings is a human screen. Managing an integration here means connecting or disconnecting it — granting and revoking this dashboard's authorization to use a service. What a card draws from that service is its query, not a setting on the connection.
+Managing an integration here means connecting or disconnecting it — granting and revoking this dashboard's authorization to use a service. What a tile draws from that service is a query, not a setting on the connection.
+
+Roles are not edited here.

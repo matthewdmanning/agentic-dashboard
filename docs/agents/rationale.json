@@ -1,166 +1,130 @@
 {
-  "@base-ui/react": {
-    "terms": ["component library"],
-    "text": "Stays, because this dashboard runs shadcn on the base-nova preset. shadcn is not tied to Base UI: components.json carries a base field of radix or base, and the shadcn package itself depends on neither -- the primitive library arrives with the components the CLI writes. Having chosen base, src/components/ui/{badge,button,separator}.tsx import it directly and removing it breaks them; card.tsx and table.tsx need no primitive at all. Switching to radix is a preset change, not a package edit. D32 first grouped it with react-aria-components as a package to remove, which was wrong -- don't re-suggest removing it."
+  "status": {
+    "terms": [],
+    "text": "Non-authoritative. CONTEXT.md and ARCHITECTURE.md are the specification; this file records why, and is a suggestion to a reader rather than a constraint on one. Where it disagrees with the two specs, the specs win."
   },
   "database": {
     "terms": [],
-    "text": "Omitted; the dataset is too small to need one, and a local JSON file stays directly usable as context for local AI tools."
+    "text": "Omitted; the dataset is too small to need one, and local JSON files stay directly usable as context for local AI tools."
   },
   "decision records": {
     "terms": [],
-    "text": "No ADR directory -- this file is deliberately mutable and consolidated, not a set of immutable per-decision files. Formal decisions (`D1`-`D42` below; a gap means a withdrawn decision, numbers never reused) and standalone notes live side by side, each with a stable id and a `terms` tag array for topical lookup. Tags, not a single key, since a decision usually relates to more than one term -- D26 is component-library, theme, and base-color at once, and a single key would arbitrarily pick one. Superseded reasoning is deleted in place rather than kept as annotated history; git holds what was thought before."
+    "text": "No ADR directory -- this file is deliberately mutable and consolidated, not a set of immutable per-decision files. Decisions carry a stable id (`D1`-`D48`; a gap means a withdrawn decision, numbers never reused) and a `terms` tag array for topical lookup. Tags rather than a single key, since a decision usually relates to more than one term. Superseded reasoning is deleted in place; git holds what was thought before."
   },
   "display-role key": {
     "terms": ["display-role key"],
-    "text": "Schema keys name how a value is displayed rather than what it means in a source domain, so a card mapper can retarget new source data onto an existing template without new code."
+    "text": "Schema keys name how a value is displayed rather than what it means in a source domain, so a tile mapper can retarget new source data onto an existing registry item without new code."
   },
   "D1": {
-    "terms": ["service"],
-    "text": "The service exposes one interface; client and MCP are peers over it, not a privileged path each. Rejected: MCP reaching persistence directly, or duplicating permission logic -- either creates a second door a permission check doesn't cover. Consequence: MCP cannot run without the service process."
+    "terms": ["mutation"],
+    "text": "One interface for changing a dashboard; a person's client and an agent are peers over it, not a privileged path each. Rejected: an agent reaching persistence directly, or duplicating permission logic -- either creates a second door a permission check doesn't cover."
   },
   "D2": {
     "terms": ["role", "account"],
-    "text": "`role` is a named bundle of permissions assigned to an account; `account` is the identity a caller presents. No separate developer/user concept -- what distinguishes work is which door a change goes through: dashboard configuration through the service (role-governed), built-in card mappers/packages as source-only (no role reaches them), card templates split between initialization/source and post-init assembly (`cards: write`)."
+    "text": "`role` is a named bundle of permissions assigned to an account; `account` is the identity a caller presents. No separate developer/user concept -- what distinguishes work is which door a change goes through: dashboard configuration through the one interface (role-governed), roles and packages as source-only (no role reaches them), a tile's source through the registry."
   },
   "D3": {
     "terms": ["account", "role"],
-    "text": "An account (credential + role name) lives in the auth store, outside dashboard data. The service resolves account, then role, then permissions, on every call. Keeps credentials and tokens out of dashboard data."
+    "text": "An account lives outside dashboard configuration. Account, then role, then permissions, resolved on every call. Keeps credentials out of dashboard data."
   },
   "D4": {
-    "terms": ["role", "service"],
-    "text": "Every request resolves to a role at one enforcement point; no caller skips it, including local callers and MCP. Rejected: role checks on agent calls only with human-trusted client endpoints -- that rebuilds the second door D1 removed."
-  },
-  "D6": {
-    "terms": ["card template"],
-    "text": "The application is cut into seven modules (map lives in ARCHITECTURE.md). This decision settles the cut itself: `card-templates` is separate from `contract` since templates change on a different cadence than the service surface, keeping `contract` React-free by construction."
+    "terms": ["role"],
+    "text": "Every request resolves to a role at one enforcement point; no caller skips it, including local ones. Rejected: role checks on agent calls only, with human-trusted client endpoints -- that rebuilds the second door D1 removed."
   },
   "D8": {
-    "terms": ["card", "theme"],
-    "text": "A card carries no position, size, or style of its own -- placement belongs to the dashboard, style is deleted as a concept (see theme, D10). Makes a card portable across dashboards, which is what makes more than one dashboard possible later. A card does carry its own state (D18)."
+    "terms": ["tile", "dashboard"],
+    "text": "A tile carries no placement of its own -- which dashboard, what order, what size all live on the dashboard's reference to it. Makes a tile portable across dashboards, which is what makes more than one dashboard possible later. A tile does carry its own state (D18)."
   },
   "D9": {
     "terms": ["dashboard"],
-    "text": "A dashboard is an ordered set of card references plus a theme reference -- grid-capable later, since no card claims a placement, cell/span can be added without reshaping anything. More than one dashboard over one pool of cards falls out for free, though not built yet."
-  },
-  "D10": {
-    "terms": ["theme"],
-    "text": "\"Style\" stops being a term anywhere in the project; the underlying concept -- a named set of semantic tokens whose swap changes every colour and font at once -- is theme. A dashboard carries a theme reference; theme definitions live beside it in dashboard configuration."
+    "text": "A dashboard is an ordered set of tile references. More than one dashboard over one pool of tiles falls out for free, though not built yet."
   },
   "D11": {
     "terms": ["query", "integration"],
-    "text": "A query names the integration it runs against; the two travel together, no third entity binds them. Two queries against the same integration run separately and hold their own result copies -- nothing about a query is deduplicated or pooled, except the card mapper each names (D38)."
+    "text": "A query names the integration it runs against; the two travel together, no third entity binds them. Two queries against the same integration run separately and hold their own result copies -- nothing is deduplicated or pooled, except the tile mapper each names (D38)."
   },
   "D13": {
     "terms": ["mutation"],
-    "text": "Every write is a mutation -- a named change applied against current state, not a snapshot comparison. No revision field, no schema version, no ETag/If-Match: a queued write that replays late still applies correctly because it describes a change, not a result. Versioning earns nothing with no stored data belonging to anyone else."
+    "text": "Every write is a mutation -- a named change applied against current state, not a snapshot comparison. No revision field, no schema version, no ETag: a queued write that replays late still applies correctly because it describes a change, not a result."
   },
   "D14": {
     "terms": ["mutation", "connection"],
-    "text": "Two operations: `read(scope)` returns state, `apply(mutations)` applies one or more atomically. Mutation types are a tagged union, each carrying its required permission category, so enforcement is one lookup and the offline queue is a list of `apply` payloads. Connection authorize/disconnect is the one exception -- a live credential handoff, not a mutation, so a secret never enters the mutation or offline-queue format. Rejected: a wide RPC surface (`addCard`, `moveCard`, ...) -- each action would need its own endpoint and permission check."
+    "text": "Two operations: read a scope, apply mutations atomically. Mutation types are a tagged union, each carrying its required permission category, so enforcement is one lookup and the offline queue is a list of apply payloads. `apply` reports applied or queued, because the interface otherwise promises atomic application online and replay offline while telling a caller neither -- leaving every caller to infer it from its own idea of connectivity. Rejected: a wide RPC surface (`addTile`, `moveTile`, ...) -- each action would need its own route and permission check."
   },
   "D15": {
     "terms": ["mutation", "role"],
-    "text": "Mutations in `roles` and `integrations` require a live service; every other mutation queues offline and replays on reconnect. The line is security, not structure: a permission grant or external authorization applied blind against unseen state is the one case where \"apply against whatever you find\" is wrong. The client still caches for offline viewing and tells the user when offline."
+    "text": "Mutations touching integrations require a live connection; every other mutation queues offline and replays on reconnect. The line is security, not structure: an external authorization applied blind against unseen state is the one case where 'apply against whatever you find' is wrong."
   },
   "D16": {
     "terms": ["integration"],
-    "text": "Integrations and backup targets share one module. Both are user-authorized connections to an external service; the authorization/credential-handoff code is identical and they differ only in data direction. Split later only if a second concern actually diverges."
+    "text": "Integrations and backup targets are one concern. Both are user-authorized connections to an external service, the authorization path is identical, and they differ only in data direction. Split later only if a second concern actually diverges."
   },
   "D18": {
-    "terms": ["card", "state"],
-    "text": "A card has state, updated by mutations regardless of what produced them -- no separate entity for what a card draws from, and no term for one. `{id, title, template, state}`; no card type, no manual-vs-connected distinction. State is stored already fitting the card template's schema, so rendering is a straight read."
+    "terms": ["tile", "state"],
+    "text": "A tile has state, updated by mutations regardless of what produced them -- no separate entity for what a tile draws from, and no term for one. No tile type, no manual-vs-connected distinction. State is stored already fitting the schema, so rendering is a straight read."
   },
   "D19": {
     "terms": ["role", "settings"],
-    "text": "No mutation reaches a role -- roles join built-in card mappers and packages as source-only changes. The `roles` permission category survives read-only in effect (gates `read(\"roles\")`); no no-widening guard is needed since nothing can widen a caller's own bundle. Settings doesn't edit roles."
+    "text": "No mutation reaches a role -- roles are a source-only change. The `roles` permission category survives read-only in effect; no no-widening guard is needed since nothing can widen a caller's own bundle. Settings doesn't edit roles."
   },
   "D20": {
     "terms": ["role", "mutation"],
-    "text": "Five categories (`data`, `cards`, `presentation`, `integrations`, `roles`), each holding one ranked level (`noAccess < read < edit < write`, each implying the ones below). The split falls on the mutation, not the category -- `data: edit` alongside `cards: edit` lets a caller change what a card shows without adding or deleting cards. `edit-*` mutations never create; creation needs `write`."
+    "text": "Four categories (`data`, `tiles`, `integrations`, `roles`), each holding one ranked level (`noAccess < read < edit < write`, each implying the ones below). No category for appearance, since appearance is served per user from the registry rather than mutated through this interface, which would leave one nothing to gate. The split falls on the mutation, not the category -- `data: edit` alongside `tiles: edit` lets a caller change what a tile shows without adding or deleting tiles. One decision takes the mutation type, the acting account, and the target's owner, and returns allow or deny; ownership is an input to it rather than a second rule beside it, so one lookup genuinely decides."
   },
   "D21": {
     "terms": ["dashboard"],
-    "text": "The application ships one dashboard with no create/delete mutation. It arrives in the default configuration so \"no dashboard exists\" is never a state the UI handles. `edit-dashboard` is the only dashboard mutation -- reorders card references, changes the theme reference."
-  },
-  "D22": {
-    "terms": ["card template"],
-    "text": "The service assembles a card template from a mandatory JSON Schema plus a declarative composition tree (`{component, props, children}`); the agent never writes code. Correctness comes from `tsc --noEmit` against the library's real types, not a hand-maintained parallel schema -- an earlier draft tried that and was wrong. Static trees only: no hooks, no callbacks, no drag-and-drop -- those stay hand-written. Triggers the D39 rebuild; not a hot update."
-  },
-  "D23": {
-    "terms": ["component library", "theme"],
-    "text": "The component library is named once at initialization, not through a mutation -- same posture as roles (D19). Fixes what a theme can say: its own CSS variables and utility classes, never arbitrary CSS, so styling stays checkable the way D22 makes composition checkable."
+    "text": "One dashboard ships, with no create/delete mutation. It arrives in the default configuration so 'no dashboard exists' is never a state the UI handles."
   },
   "D24": {
-    "terms": ["registry item", "card template"],
-    "text": "Each dashboard serves its active card templates as a shadcn-compatible registry (`/r/registry.json`, `/r/<name>.json`), sourced from the active card-template manifest a build promotes (D39) -- never a directory scan, since a build has temp files and failed candidates that aren't real templates. The registry endpoint and the client view are meant to read the same active generation; as of this writing the client side does not yet (see ARCHITECTURE.md's rendering-path note -- known gap, not a design choice)."
-  },
-  "D25": {
-    "terms": ["component library"],
-    "text": "shadcn/ui is the framework; its components and Tailwind are the defaults where this project states none of its own. A card template composes shadcn's components directly -- no headless structural layer beneath them. `react-aria-components` isn't stale as a library, just as this codebase's direction; D32 removes the reliance, and package.json confirms it's gone."
-  },
-  "D26": {
-    "terms": ["component library", "base color", "theme"],
-    "text": "Every colour anywhere is a semantic token from the Tailwind/shadcn set -- no hex literals, no palette-scale utilities -- which is what lets one base-colour change recolour everything instead of only what happened to be written against it. Base colour is per-user: the same card renders in different base colours for different viewers. shadcn's own preset mechanism is build-time only, so per-user base colour works by scoping token values themselves at runtime, not by re-running the CLI."
-  },
-  "D27": {
-    "terms": ["per-user configuration", "base color", "preset"],
-    "text": "A user's appearance -- base colour, typeset, menu colour/accent, personal presets, and which preset is selected -- lives in a file-backed store holding one record per user; secrets never live there. Base colour modifies a theme rather than sitting beside it -- it controls token values generated at init or preset-apply. A preset is a complete, literal token set in `globals-example.css` format, never a partial override. Token values are scoped per user at runtime rather than by re-running shadcn's build-time preset mechanism (D26); this entry first said generation happens only at build time, which contradicted D26 and the shipped read path. `admin` adds presets for everyone, a user may add their own ungated."
-  },
-  "D28": {
-    "terms": ["account", "connection"],
-    "text": "Account credentials are hashed only (`crypto.scrypt` + `timingSafeEqual`) -- never stored, since this dashboard only ever verifies them. Integration tokens are encrypted at rest (AES-256-GCM) since they must be recoverable to send in a request. `CredentialStore` is the single seam to a stored secret. Key rotated every 90 days as a policy starting point, not a threat-model derivation; a token names the key it was sealed under so rotation needs no flag day."
+    "terms": ["tile"],
+    "text": "A dashboard serves its own tiles as a registry, so discovery happens through `shadcn search` / `view` / `add` rather than a bespoke tool an agent must first be taught. Sourced from what `shadcn build` produced, never a directory scan or an index assembled at request time -- a build has temp files and failed candidates that are not real tiles."
   },
   "D29": {
     "terms": ["integration", "connection", "query"],
-    "text": "An integration (type, query surface, adapter) is shared and defined once; authorization is per-user -- two users on the same service type share one integration, not two. Queries are user-specific; results are shared once mapped into card state. Deliberate privacy posture: authorizing an integration contributes its data to a shared surface, not a private view."
+    "text": "An integration is shared and defined once; authorization is per-user -- two people on the same service share one integration, not two. Queries are user-specific; results are shared once mapped into tile state. Deliberate privacy posture: authorizing an integration contributes its data to a shared surface, not a private view."
   },
   "D30": {
-    "terms": ["query", "card"],
-    "text": "When two users' queries write the same card, the most recent write wins -- no merge, no staleness check, consistent with D13. A known ceiling, tracked with a `ponytail:` comment in the code, not a claim that conflicts don't matter. An adapter receives the relevant user's secret at update time via the existing `tokenProvider` seam. A user may only supply queries under their own identity, enforced at the one enforcement point."
+    "terms": ["query", "tile"],
+    "text": "When two users' queries write the same tile, the most recent write wins -- no merge, no staleness check, consistent with D13. A known ceiling, not a claim that conflicts don't matter. A refresh runs under the relevant user's credential. A user may only supply queries under their own identity, enforced at the one enforcement point."
   },
   "D31": {
     "terms": ["query"],
-    "text": "A query is private to the user who supplied it; only its result is shared (D29). A query reveals more than its result does -- whose calendar, filtered how -- so making results common was deliberate; making search terms common was not an intended side effect. Refresh runs server-side under the owner's token, so read-visibility doesn't gate whether another user's query runs."
+    "text": "A query is private to the user who supplied it; only its result is shared (D29). A query reveals more than its result does -- whose calendar, filtered how -- so making results common was deliberate; making search terms common was not. Refresh runs server-side under the owner's credential, so read-visibility doesn't gate whether another user's query runs."
   },
   "D32": {
-    "terms": ["query", "card", "card template", "registry item"],
-    "text": "A query belongs to its user, never the card; only the owner (and `admin`, for deletion) reaches it. `assemble-card-template` emits a real registry item (`name`, `type`, `files`, `dependencies`, `registryDependencies`) paired with its JSON Schema, rather than a bare file the registry wraps after the fact. `react-aria-components` leaves `package.json` outright; `@base-ui/react` stays. The original five card templates (raw HTML, no styling, pre-dating every later decision) were deleted outright; their schemas were kept for tests at `src/test-support/card-template.ts`. `message` is the first shadcn replacement (#82)."
+    "terms": ["query", "tile"],
+    "text": "A query belongs to its user, never the tile; only the owner reaches it, plus an administrator for deletion."
   },
   "D35": {
     "terms": ["role", "account", "query", "connection"],
-    "text": "The matrix governs shared and server-owned things only -- a user's queries, connections, appearance, and presets are theirs by structure, no category or level gates them (card mappers are the one exception, D38). Two default roles ship as ordinary configuration, not fixed names: `admin` (write on data/cards/presentation/integrations, read on roles) and `user` (write on data, read on cards/presentation/integrations, no access to roles). Roles are edited by editing the roles file the source imports -- same trust level as editing source -- and are not part of dashboard configuration. The local OS user resolves to full permissions (equal to admin); anyone else starts with none until authenticated, proven by a token written to `.dashboard/local-user-token`, hardened per platform (chmod 0600 POSIX; icacls on Windows, since chmod there only maps to a read-only flag)."
-  },
-  "D36": {
-    "terms": ["card template", "registry item"],
-    "text": "A card template is a registry item -- shadcn's own vocabulary and shape, nothing invented. An item can carry more than one component (hook, utility, tokens, stylesheet) in the same unit; this doesn't widen the assembled path, which still can't express a hook. What an agent submits must be composition of the declared library's primitives -- raw HTML or hand-written CSS is never an accepted substitute, regardless of what the browser ultimately renders."
-  },
-  "D37": {
-    "terms": ["card template", "role"],
-    "text": "Initialization generates default card templates from the declared library as a project operation, not an application-role action. After initialization, `assemble-card-template` takes `cards: write` (`admin` holds it, `user` doesn't). Hand-writing a template is a source change governed by repo access and review, entering the dashboard through the same rebuild and manifest as an assembled one -- not a second install door."
+    "text": "The permission matrix governs shared and server-owned things only. A user's queries, connections, and appearance are allowed to them without reference to a level -- but that comes out of the one decision in D20, which takes the target's owner as an input, rather than from a carve-out sitting beside the matrix. Two default roles ship as ordinary configuration, not fixed names. Roles are edited by editing the file the source imports -- same trust level as editing source. The local machine's own user resolves to full permissions; anyone else starts with none until authenticated. Loopback alone is not proof, since another account on the same host can reach the port."
   },
   "D38": {
-    "terms": ["card mapper"],
-    "text": "A card mapper (Fowler's mapper) sets up a correspondence between two schemas without formatting anything; named for what it maps to, since what it maps from is any structured data, not only an API response. Mappers live in one shared store referenced by name -- two queries needing the same mapping name the same mapper rather than duplicating it. Adding one is ungated, since a user who can't write one can't render their own query at all; changing or deleting a referenced one takes `cards: write`; deleting a referenced one always fails `in-use` instead of cascading."
-  },
-  "D39": {
-    "terms": ["card template", "component library"],
-    "text": "The build module accepts a candidate set of registry items and schemas, validates and type-checks them, and atomically promotes manifest and client assets only on full success; failure leaves the active build untouched and returns to the caller. No hot update -- an open page keeps what it loaded, the next full reload gets the promoted build. Avoids a background-job interface, partial activation, and live module replacement."
+    "terms": ["tile mapper"],
+    "text": "A tile mapper (Fowler's mapper) sets up a correspondence between two schemas without formatting anything; named for what it maps to, since what it maps from is any structured data, not only an API response. A mapper is `\"identity\"` or a plain function typed against the schema, gated by the same typecheck as a registry item's own source. Rejected: a declarative mapping spec with field renaming, fallback chains, defaults, and array mapping -- its interface was nearly as large as its implementation, and worse, it was a mechanism no model has seen, so every model would learn it from project documentation. That is the divergence D44 exists to remove, and specifying one would contradict the product principle in ARCHITECTURE.md. Mappers live in one shared store referenced by name -- two queries needing the same mapping name the same mapper rather than duplicating it. Adding one is allowed to anyone, since a user who can't write one can't render their own query at all; a referenced mapper has no single owner, so changing or deleting one falls back to the level, and deleting a referenced one always fails instead of cascading."
   },
   "D40": {
-    "terms": ["integration catalog", "integration", "connection"],
-    "text": "The catalog is file-backed and outlives any one user's connection to it. An entry carries whether it's default, recommended, or dynamic, and its availability. Disconnecting destroys a user's credential immediately; a dynamic entry with zero connections expires after a project-configured retention period (default 30 days, `integrations: write` may change it). Blocking prevents new connections and refreshes but keeps everything stored, with a persistent notice to affected users. Removing with live dependencies needs an explicit override after a high-level warning -- counts and effects only, never another user's query text, identity, or credential -- and destroys credentials but leaves queries private and merely unavailable. Expiry runs at startup and on connection change; no background scheduler."
+    "terms": ["integration", "connection"],
+    "text": "The integration list is project-wide and outlives any one user's connection to it. An entry carries whether it's default, recommended, or dynamic, and its availability. Disconnecting destroys a user's credential immediately; a dynamic entry with zero connections expires after the retention period in project policy. Blocking prevents new connections and refreshes but keeps everything stored, with a notice to affected users. Removing with live dependencies needs an explicit override after a warning -- counts and effects only, never another user's query text, identity, or credential. Expiry runs at startup and on connection change; no background scheduler."
   },
-  "D41": {
-    "terms": ["query", "connection"],
-    "text": "One store holds every user's queries: a cleartext envelope (id, owner, mapper name, card fed) plus AES-256-GCM encryption of what's actually private -- which integration, what's asked -- under a host-held key bound to the owner. Costs something real: D32's structural privacy (separate per-user stores) becomes at-rest encryption plus an access check, so this protects a stolen data directory, not the server itself. Buys a single place to answer cross-user questions: whether a mapper is still referenced, whether a catalog entry is unused, who's affected by a block or removal. Same encryption seam serves connection credentials (D28) -- same shape of problem."
+  "D44": {
+    "terms": ["tile", "dashboard", "tile mapper"],
+    "text": "Vocabulary conformance is the product, not tidiness. A coined term forces an agent to read project documentation, and reading comprehension is where models diverge most; a shadcn term is already in every model's weights. Three rules follow: this project defines no term shadcn defines, contradicts nothing shadcn documents, and never gives a second name to a meaning shadcn already has. The placed thing is a `tile` rather than a card, because `Card` is a shadcn component and shadcn's own eval prompts use 'cards in a grid' for what this project places. There is no project noun for the reusable half at all -- a registry item's own type names it, and `template` is a CLI flag. Anything the project would have to define to restate a shadcn term is a defect, not a convenience."
   },
-  "D42": {
+  "D45": {
+    "terms": ["dashboard", "tile"],
+    "text": "A tile reference carries `size: sm | md | lg` and nothing else. Rejected: twelve-column integer spans -- expressiveness the common prompts ('make it wider', 'put these side by side', 'full width') never ask for, and every extra option is another axis on which two models disagree. Twelve choices means twelve defensible answers to one instruction. A string enum rather than a number, because that is the form models have most exposure to in this library's context. Maps to real grid spans internally; the agent never sees the integer."
+  },
+  "D46": {
+    "terms": ["tile", "display-role key"],
+    "text": "A registry item carries its data schema as JSON Schema in `meta`. That pairing is the whole contract an agent writes against, and it is the one thing in this area shadcn has no opinion about -- everything else is already registry vocabulary. The browser converts that schema to a validator at load rather than reading a map compiled in at build time, so a tile added while the app is running renders without a rebuild. Measured at roughly 13 kB gzipped on top of a validator already shipping for other reasons -- smaller than one charting component, and invisible to a model, which writes TSX and a schema and never sees where validation runs. Rejected: a second validator library alongside the existing one; server-only validation, which saves nothing since the existing validator ships regardless. Correctness of the source itself comes from typechecking against real component types, not a hand-maintained prop schema -- and the component's props type is derived from `meta.schema`, so the same typecheck covers the pairing. Typechecking the source alone proved it valid against shadcn's types while proving nothing about the schema it ships with, which let an item pass every gate and still declare data its component never reads."
+  },
+  "D48": {
+    "terms": [],
+    "text": "One npm package, no workspaces, one project-root `components.json`. Rejected: shadcn's monorepo layout. Its benefit is the CLI deciding file placement, and that already happens in a single package -- `aliases.ui` and `aliases.components` are separate targets, which is what routes base components one way and blocks the other. A workspace boundary relocates those targets; it does not create the split. What it adds is cost: `@workspace/ui/...` is a far rarer import shape than `@/components/ui/...`, and a path shape models have seen less often is one they reproduce less consistently, which runs against D44. Plus two config files whose `style`, `iconLibrary`, `baseColor`, and aliases must agree, npm workspaces, and Turborepo -- for one consuming app. Revisit if a second app appears. `package.json#imports` is not an alternative to any of this; it is an alias mechanism inside a monorepo, replacing `tsconfig.json` paths and nothing else."
+  },
+  "D47": {
     "terms": ["connection", "account"],
-    "text": "The host-held key (D41) is right for a dashboard on its owner's own machine, wrong once someone else operates the host. `SecretBox` is the seam: file-backed stays the default locally, a hosted deployment supplies a managed-secrets-backed one via deployment configuration, not a code edit. `seal`/`open` are async because some managed services never release key material and perform encryption themselves -- a sync signature would rule that shape out entirely. No provider is canonical, same posture as integrations toward the services they connect to; nothing outside composition may construct its own box."
-  },
-  "D43": {
-    "terms": ["theme", "component library"],
-    "text": "A user says what things look like in the library's own vocabulary, never in CSS, and never touching a card template's markup or a card's data. Base colour, typeset, menu colour/accent, and presets are user-owned. `fontScale` is gone -- a typeset's `--typeset-size` is the same setting with a better vocabulary."
+    "text": "Credentials are referenced by name in `${NAME}` form, following shadcn's registry-authentication convention. Resolution takes the name and the acting account together: one dashboard holds many people's credentials for the same integration, and an environment variable has one value per process, so a name alone cannot tell them apart. That makes the seam real rather than hypothetical -- an in-memory adapter for tests, an encrypted source in use. The configuration holds a name, never a secret; the value comes from an encrypted source, and rotation belongs to that source. Rejected: storing sealed material here -- that is what forces a rotation schedule, per-secret key naming to avoid a flag day, and a swappable secret-box seam. Store none of it and none of that is needed. Multi-user follows from the server resolving a presented credential to an identity, which is the documented pattern, and needs no project-specific auth vocabulary."
   }
 }
