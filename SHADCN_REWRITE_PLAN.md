@@ -1,7 +1,8 @@
 # shadcn Rewrite Plan — agentic-dashboard
 
-**Date:** 2026-09-09
-**Repo:** `C:\GitHub\agentic-dashboard` (branch `main`, clean, `4fb5d11`)
+**Date:** 2026-09-09, updated 2026-09-10
+**Repo:** `C:\GitHub\agentic-dashboard` (branch `docs-shadcn-vocabulary-repair`)
+**Status:** Phase 1 complete at `3be56b3`. Phase 2 not started.
 **Authoritative vocabulary source:** <https://ui.shadcn.com/llms.txt> and the pages it indexes.
 
 ---
@@ -10,39 +11,50 @@
 
 **One lane: rebuild.** The current repo becomes reference material. It is not patched, not run, not maintained, and its test suite is not kept green.
 
-## Phase 1 — Repair the specs
+## Phase 1 — Repair the specs — **COMPLETE** (`3be56b3`)
 
-The specs are the deliverable the build agent consumes. Every error in them compounds across every model that reads them. Files: `ARCHITECTURE.md`, `CONTEXT.md`, `docs/agents/rationale.json`.
+The specs are the deliverable the build agent consumes. Every error in them compounds across every model that reads them.
 
-### Vocabulary
+**Vocabulary.** V1–V6 and N1 struck: they corrected the project's definitions of shadcn's terms, and those definitions were deleted instead. A corrected duplicate is still a duplicate. D44 is the rule now — define no term shadcn defines, contradict nothing shadcn documents, give no second name to a meaning shadcn already has. `card` → `tile`, `card mapper` → `tile mapper`, `card template` → gone.
 
-**Done.** V1–V6 and N1 are struck: they corrected the project's definitions of shadcn's terms, and those definitions were deleted instead. A corrected duplicate is still a duplicate. The rule now in force is D44 — this project defines no term shadcn defines, contradicts nothing shadcn documents, and gives no second name to a meaning shadcn already has.
+**Deleted from the spec.** The bespoke manifest format, the bespoke appearance vocabulary, the composition-tree assembly interface, the module map, and six terms shadcn owns.
 
-See `REBUILD-NOTES.md` for the renames and for what the old definitions got wrong.
+**Now specified.** `registry.json` as the on-disk source of truth; each tile's JSON Schema in the registry item's `meta`, with the component's props type derived from it; shadcn preset codes for appearance; per-user appearance as a personalized theme item; `size: sm | md | lg` for placement; `${NAME}` credential references resolved per acting account; four permission categories behind one decision; `apply` reporting applied or queued; reads naming what they withheld.
 
-### Structural corrections
+**Repo shape.** One package, npm, no workspaces, one project-root `components.json`. Monorepo rejected — see alternative 7.
 
-- **Delete from the spec:** the bespoke card-template manifest format, the bespoke appearance vocabulary, and the composition-tree assembly interface.
-- **Replace with:** `registry.json` as the single on-disk source of truth; each card template's JSON Schema in the registry item's `meta` field; shadcn preset codes for appearance; "the agent writes normal TSX, `tsc --noEmit` gates it."
-- **Layout:** specify real layout primitives (size/span/grid). Ordering alone is not a dashboard.
-- **Auth:** point at <https://ui.shadcn.com/docs/registry/authentication> as the pattern. Namespace config carries `"headers": {"Authorization": "Bearer ${REGISTRY_TOKEN}"}`, credentials via env var, per-user registry content, server returns 401/403. Multi-user and multi-agent are **in scope**.
-- **Layout of the repo:** one package, npm, no workspaces, one project-root `components.json`. Monorepo rejected — see alternative 7.
-- **Register the dashboard's own registry** in `components.json` `registries` so shadcn's own MCP server and CLI provide template discovery.
-- Name B1–B4 (Part 2, section B) as required capabilities with acceptance criteria.
+See `REBUILD-NOTES.md` for the renames, the corrections not to revert, and what the old definitions got wrong. Delete that file when Phase 2 lands.
 
 ## Phase 2 — Build
 
-Build agent works from the repaired specs into a new tree.
+**Where: this repo, on a branch off `docs-shadcn-vocabulary-repair`. Its first commit deletes `src/` and `e2e/` — 81 tracked files.**
+
+Not a new repository. This one carries 69 closed issues, CI configuration, the vendored shadcn Agent Skill, and the specs themselves; a fresh repo throws all of that away to avoid a contamination risk that `REBUILD-NOTES.md` already handles. Git keeps the deleted code recoverable, so the deletion is reversible and the working tree is clean from commit one.
+
+Do not carry forward: `globals-example.css` at the repo root (see N2, confirmed), and anything in the deletion table in `REBUILD-NOTES.md`.
+
+### Shape
 
 - One package on npm. `aliases.ui` and `aliases.components` already route base components and blocks to separate targets, so the CLI decides placement without a workspace boundary.
-- Vendor shadcn's Agent Skill (`npx skills add shadcn/ui`) so every model receives identical instructions. `skills-lock.json` already vendors it in the current repo.
-- Own registry registered as a namespace; discovery comes from `shadcn search` / `view` / `add`, not a bespoke tool.
-- Project MCP server shrinks to what shadcn cannot do: card placement/layout and card data. A few tools, not ~28.
+- Vendor shadcn's Agent Skill (`npx skills add shadcn/ui`) so every model receives identical instructions. `skills-lock.json` already vendors it.
+- Own registry registered in `components.json`; discovery comes from `shadcn search` / `view` / `add`, not a bespoke tool.
+- Project MCP server shrinks to what shadcn cannot do: tile placement and tile data. A few tools, not ~28.
 
-**Non-negotiable, no shortcuts:**
+### Acceptance criteria — B1 to B4
 
-1. The registry-item + `meta.schema` contract — it is the interface every agent hits.
-2. The `tsc --noEmit` gate against the library's real types.
+Each of the four breaks in section B gets a check that fails today. Phase 2 is not done until all four pass, judged from a **cold agent session** with no prior context.
+
+| #      | Capability       | Passes when                                                                                                                                                                                         |
+| ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B1** | Tile discovery   | An agent names every available tile and each one's required state keys using only `shadcn search` / `view` against the dashboard's own registry — no project source read, no project-specific tool. |
+| **B2** | Authoring        | An agent adds a new tile by writing TSX plus a JSON Schema. `tsc --noEmit` passes. Deliberately mismatching the schema against the component's props makes it fail.                                 |
+| **B3** | New tiles render | A tile added while the server is running renders after a browser reload, with no client rebuild and no restart.                                                                                     |
+| **B4** | Layout           | "Put these two side by side" produces one row of two `md` tiles. "Make it full width" produces one `lg`. The result is visibly a grid, not a stack.                                                 |
+
+### Non-negotiable, no shortcuts
+
+1. The registry-item + `meta.schema` contract, with props derived from the schema — it is the interface every agent hits.
+2. The `tsc --noEmit` gate, covering tile source, its schema pairing, and tile mappers alike.
 3. Real layout primitives.
 
 ## Phase 3 — Screenshot harness
@@ -64,11 +76,11 @@ Two consequences that reorder everything:
 
 ## B. Fatal flaws in the current repo — the core loop is open
 
-The project cannot generate any dashboard. Four independent breaks, each sufficient on its own. Evidence in `src/mcp/server.ts` and `ARCHITECTURE.md:83-89`.
+The project cannot generate any dashboard. Four independent breaks, each sufficient on its own. Evidence in `src/mcp/server.ts`; restated for the rebuild in `REBUILD-NOTES.md`. Written in the old vocabulary, since they describe the code being replaced.
 
 - **B1. No template discovery.** `add-card` requires a template name plus `state` matching that template's schema. No tool lets an agent learn either. `read-dashboard` reads cards, not templates; no tool reads the manifest. `assemble-card-template` writes a template the agent can never find again.
 - **B2. `assemble-card-template` asks for a format with no reference.** It wants a composition tree of shadcn components, but nothing tells the agent what props any component accepts.
-- **B3. Assembled templates never render.** `ARCHITECTURE.md:83-89` documents this: `CardView` renders from a compile-time map that nothing rebuilds from the promoted manifest.
+- **B3. Assembled templates never render.** `CardView` renders from a compile-time map that nothing rebuilds from the promoted manifest.
 - **B4. Layout is one-dimensional.** `insert-card` takes only `cardId` and `index`. No size, span, or grid. Best possible output is a single-column stack.
 
 ## C. Misallocated surface
@@ -125,7 +137,7 @@ Sources: shadcn doc pages fetched directly, plus the packaged `shadcn` skill, wh
 ## Confirmed corrections — DO NOT REVERT
 
 - **`menuColor` and `menuAccent` ARE real shadcn fields.** The CLI's own `info` output for this project reports them as parsed config, and `preset.values` includes both. **Context7's shadcn snapshot does not carry them and will suggest otherwise — it is stale on this point.** An earlier session concluded they were invented and shipped commit `99d8307` on that basis. The packaged skill is the better source here.
-  - Still unverified: whether the project's full enum values are correct (`menuColours = default | inverted | default-translucent | inverted-translucent`, `menuAccents = subtle | bold`). Only `default` and `subtle` confirmed. `npx shadcn@latest preset decode b2fA` settles it.
+  - **Moot.** The enum-range question is closed by deletion: the project no longer defines `menuColours` or `menuAccents`, so their ranges are shadcn's business. `preset decode b2fA` was run and returns the values in use, not the ranges — it could never have settled it. Field names confirmed a second way.
 - **`"style": "base-nova"` is valid.** Appears verbatim in the CLI reference (`init --preset base-nova`). It is base (`base`) + style (`nova`). A fetch of `/docs/cli` claimed otherwise; that answer was incomplete.
 
 ## Current project config (from `shadcn info`)
@@ -136,9 +148,11 @@ Sources: shadcn doc pages fetched directly, plus the packaged `shadcn` skill, wh
 - Installed components (11): alert, badge, button, card, field, input, label, select, separator, table, textarea
 - `registries` resolves to only the `@shadcn` default — the project's own `/r/` is **not** registered
 
-## Open item
+## Open items — none
 
-**N2 — possible global-CSS mis-detection.** `shadcn info` reports `project.tailwindCss: "globals-example.css"` while `resolvedPaths.tailwindCss` is `src\styles.css`. The example file at repo root appears to be detected as the project's global stylesheet. If `apply --only theme` writes there, it writes to the wrong file. Unconfirmed. Relevant to the new tree — do not carry a root-level `globals-example.css` forward without checking.
+**N2 — global-CSS mis-detection. CONFIRMED, 2026-09-10.** `shadcn info` reports `project.tailwindCss: globals-example.css` while `resolvedPaths.tailwindCss` is `C:\GitHub\agentic-dashboard\src\styles.css` — two different files. `globals-example.css` exists at the repo root (4,224 bytes) and is being detected as the project's global stylesheet. `apply --only theme` would write to the wrong file.
+
+**Action for Phase 2: no `globals-example.css` at the repo root.** If an example stylesheet is wanted, it goes in `docs/` under a name the CLI will not mistake for the real one.
 
 ## H. Caller trace (already performed, reference only)
 
@@ -170,15 +184,16 @@ Standing instructions from the user this session:
 - **Docs and the code they describe ship in the same commit.** No docs-follow-up commits.
 - Reuse a subagent for further issues while it is under 20% context; ask only when it finishes its assigned issue.
 - Never spawn a general-purpose subagent unless the user's message contains the exact phrase "general-purpose".
-- **Project docs are not authoritative** for the duration of this planning work. They are evidence of past thinking, to be corrected, not constraints to obey.
+- **The specs are authoritative again as of `3be56b3`.** The "project docs are not authoritative" rule was scoped to the Phase 1 rewrite and is now lifted. `CONTEXT.md` and `ARCHITECTURE.md` bind; `docs/agents/rationale.json` explains and does not bind; this file plans and does not bind.
 
 ## Repo state
 
-- `main` at `4fb5d11`, working tree clean, 269 tests passing.
+- Branch `docs-shadcn-vocabulary-repair` at `3be56b3`, working tree clean. `main` at `4fb5d11`, matching `origin/main`.
+- `src/` and `e2e/` hold 81 tracked files that Phase 2 deletes. The suite still passes; it is not kept green from here.
+- `globals-example.css` at the repo root — do not carry forward (N2).
 - **All open GitHub issues were deleted** at the user's instruction (#80, #99, #104, #105, #106, #107, #108). 69 closed issues remain untouched.
 - Backups: `C:\Users\mattm\.claude\plans\issue-backup-2026-09-09\` — one JSON per deleted issue with full body, plus `issues.json` holding all 76.
-- Untracked: `.handoff/2026-09-09-shadcn-registry-architecture.md` — the **superseded** prior handoff. It argues keep-the-manifest on the grounds that "a registry item carries no data schema" (its line 53). That premise is wrong (`meta` holds arbitrary JSON), but the real blocker it sensed is the browser-side `ZodType` (section H). Read it for context; do not follow its plan.
-- Untracked: `.handoff/review-2026-09-07-issues-90-96.md`. Deleted: `docs/agents/review-2026-09-07-issues-90-96.md`.
+- Untracked: `.handoff/2026-09-09-shadcn-registry-architecture.md` — **superseded**. It argues keep-the-manifest on the grounds that "a registry item carries no data schema" (its line 53). That premise is wrong; `meta` holds arbitrary JSON. Do not follow its plan.
 
 ---
 
@@ -187,7 +202,7 @@ Standing instructions from the user this session:
 Call these with the Skill tool:
 
 - **`shadcn`** — call first, before any shadcn work. It injects live project context (`shadcn info` output: config, preset code, installed components, resolved paths) plus the critical composition and styling rules. It is a better source than Context7 for shadcn config fields.
-- **`domain-modeling`** — for the Phase 1 `CONTEXT.md` vocabulary rewrite and any ADR entries in `docs/agents/rationale.json`.
+- **`domain-modeling`** — to keep `CONTEXT.md` and `docs/agents/rationale.json` current as Phase 2 decisions land. A new term or a changed meaning is a same-commit edit, never a follow-up.
 - **`codebase-design`** — deep-module vocabulary (module / interface / implementation / depth / seam / adapter) for the Phase 2 interface design, particularly the registry-item + `meta.schema` contract.
 - **`research`** — if the unread shadcn pages (registry namespace, getting-started, examples, `/docs/mcp`, `/docs/skills`) need gathering into a repo file.
 - **`grilling`** — before committing to the Phase 2 tree layout, if the user wants it stress-tested.
@@ -196,9 +211,15 @@ Do **not** reach for `ponytail` on this work. The user explicitly rejected minim
 
 ---
 
-# Part 6 — First actions for the next session
+# Part 6 — First actions for Phase 2
+
+Phase 1 is complete and both open verifications are resolved. Nothing is left to decide before building.
 
 1. Call the `shadcn` skill to load live project context.
-2. Confirm with the user that Phase 1 (spec repair in place, on a branch) is the starting point, and whether the rebuild targets this repo or a new one.
-3. Resolve the two open verifications: `preset decode b2fA` for the menu enums, and N2's global-CSS detection.
-4. Begin Phase 1 spec edits. `ARCHITECTURE.md`, `CONTEXT.md`, and `docs/agents/rationale.json` all describe the same territory — a change to one requires the same-turn change to the others.
+2. Read `CONTEXT.md`, then `ARCHITECTURE.md`, then `REBUILD-NOTES.md` — in that order. The first two bind; the third only stops you being misled by code that is about to be deleted.
+3. Branch off `docs-shadcn-vocabulary-repair`. First commit deletes `src/` and `e2e/` and removes root `globals-example.css`. Git holds the old tree; nothing is lost.
+4. `npx shadcn@latest init` against the existing `components.json` — preset `b2fA`, Vite, one package, no `--monorepo`.
+5. Build toward B1 first. Nothing else can be demonstrated until an agent can discover a tile and its schema.
+6. Each of B1–B4 gets its check written before the capability, and each check is run from a cold agent session.
+
+**Gate before Phase 3:** all four acceptance criteria pass. The screenshot harness compares models against each other on the new app; it needs an app that produces a dashboard first.
