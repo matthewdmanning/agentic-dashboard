@@ -12,15 +12,15 @@ Every consequence below follows from that. A mechanism no model has seen before 
 
 ## What is deferred to shadcn
 
-| Concern                                                        | Handled by                                                                     |
-| -------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| Components, and where their files land                         | `shadcn add`, `components.json`                                                |
-| Appearance — style, base colour, theme, typeset, icons, radius | preset codes                                                                   |
-| Packaging a tile's source for distribution                     | registry item, `shadcn build`                                                  |
-| Discovering which tiles exist                                  | the dashboard's own registry, reached through `shadcn search` / `view` / `add` |
-| Serving different content to different users                   | registry authentication, user-personalized registries                          |
-| Referencing credentials                                        | `${NAME}` references, per shadcn's convention                                  |
-| Giving every model identical instructions                      | the vendored shadcn Agent Skill                                                |
+| Concern                                                           | Handled by                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Components, and where their files land                            | `shadcn add`, `components.json`                                                |
+| Appearance — style, base colour, theme, typeset, icons, radius    | preset codes                                                                   |
+| Packaging a tile's source for distribution                        | registry item, `shadcn build`                                                  |
+| Discovering which tiles exist                                     | the dashboard's own registry, reached through `shadcn search` / `view` / `add` |
+| Serving different content to different users                      | registry authentication, user-personalized registries                          |
+| Referencing credentials                                           | `${NAME}` references, per shadcn's convention                                  |
+| Identical shadcn instructions, for an agent working in a checkout | the pinned shadcn Agent Skill                                                  |
 
 The project implements none of these. Anything it would have to invent to replace one of them is a defect.
 
@@ -28,12 +28,15 @@ Appearance is per-user: each person is served their own theme item from the dash
 
 ## What the project owns
 
-Four things shadcn has no opinion about.
+Five things shadcn has no opinion about.
 
 1. **A data schema attached to a registry item.** A registry item carries no notion of the data it displays. This project puts a JSON Schema in the item's `meta`, derives the component's props type from it, and that pairing is the whole contract an agent works against. One source, one direction — the schema and the source it ships with cannot drift, because drift is a type error.
 2. **Display-role keys and tile mappers** — getting arbitrary external data into the shape an item expects. A mapper is a plain function typed against the schema, gated by the same typecheck as the item's own source, so there is no mapping language for a model to learn.
 3. **Placement** — which tiles are on a dashboard, in what order, at what size.
 4. **Who may change what** — accounts, roles, and one enforcement point.
+5. **Instructing the agent that connects.** The MCP server sends its own operating instructions when a client connects, and assumes that client has nothing installed. shadcn's Agent Skill reaches an agent working in a checkout; it does not reach one that connected over a socket, and most agents using a dashboard will never hold a copy of this repository.
+
+The server cannot check whether a connected agent holds any given instructions — it cannot see inside a client. So it does not try. It sends them every time instead, which makes having them a property of connecting rather than of how the client was set up. Anything a connecting agent must know to use a tool correctly belongs in the instructions or in the tool's own description, never in a document it would have to go and find.
 
 ## How data reaches a tile
 

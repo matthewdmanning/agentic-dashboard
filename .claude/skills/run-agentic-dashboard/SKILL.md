@@ -3,6 +3,15 @@ name: run-agentic-dashboard
 description: Initialize a dashboard workspace with a given configuration, start the dashboard MCP server, and drive it with tool calls (read-dashboard, add-card, edit-theme, etc.) to modify the dashboard. Use for "run the dashboard", "start the MCP server", "init a dashboard", "test the MCP tools", "screenshot/modify the dashboard via MCP".
 ---
 
+> **Drives the code being replaced.** This skill exercises the pre-rewrite MCP
+> surface — `add-card`, `edit-theme`, `assemble-card-template`, and the appearance
+> tools. It still runs today, and stops working at Phase 2's first commit, which
+> deletes `src/` and `e2e/`.
+>
+> Do not use it as a reference for the new tool surface. See
+> `SHADCN_REWRITE_PLAN.md` and `REBUILD-NOTES.md`. Delete this skill when the
+> rebuild replaces the server.
+
 Paths below are relative to the repo root (`<unit>` = this repo).
 
 This app has no GUI — it's a service (`src/service`) exposed over an MCP
@@ -64,7 +73,7 @@ since tools are added as issues land. As of #96: `read-dashboard`,
 `connect-integration`, `disconnect-integration`, `read-appearance`,
 `set-base-colour`, `set-typeset`, `set-menu-appearance`,
 `add-personal-preset`, `remove-personal-preset`, `select-preset`,
-`clear-preset-selection`. See `docs/agents/mcp.md` for what each group does.
+`clear-preset-selection`. That reference document is deleted; read `src/mcp/server.ts` if you need the current behaviour of code that is about to be removed.
 
 **3. Call one tool** (one-shot — spawns, calls, closes):
 

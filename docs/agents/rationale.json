@@ -9,7 +9,7 @@
   },
   "decision records": {
     "terms": [],
-    "text": "No ADR directory -- this file is deliberately mutable and consolidated, not a set of immutable per-decision files. Decisions carry a stable id (`D1`-`D48`; a gap means a withdrawn decision, numbers never reused) and a `terms` tag array for topical lookup. Tags rather than a single key, since a decision usually relates to more than one term. Superseded reasoning is deleted in place; git holds what was thought before."
+    "text": "No ADR directory -- this file is deliberately mutable and consolidated, not a set of immutable per-decision files. Decisions carry a stable id (`D1`-`D49`; a gap means a withdrawn decision, numbers never reused) and a `terms` tag array for topical lookup. Tags rather than a single key, since a decision usually relates to more than one term. Superseded reasoning is deleted in place; git holds what was thought before."
   },
   "display-role key": {
     "terms": ["display-role key"],
@@ -118,6 +118,10 @@
   "D46": {
     "terms": ["tile", "display-role key"],
     "text": "A registry item carries its data schema as JSON Schema in `meta`. That pairing is the whole contract an agent writes against, and it is the one thing in this area shadcn has no opinion about -- everything else is already registry vocabulary. The browser converts that schema to a validator at load rather than reading a map compiled in at build time, so a tile added while the app is running renders without a rebuild. Measured at roughly 13 kB gzipped on top of a validator already shipping for other reasons -- smaller than one charting component, and invisible to a model, which writes TSX and a schema and never sees where validation runs. Rejected: a second validator library alongside the existing one; server-only validation, which saves nothing since the existing validator ships regardless. Correctness of the source itself comes from typechecking against real component types, not a hand-maintained prop schema -- and the component's props type is derived from `meta.schema`, so the same typecheck covers the pairing. Typechecking the source alone proved it valid against shadcn's types while proving nothing about the schema it ships with, which let an item pass every gate and still declare data its component never reads."
+  },
+  "D49": {
+    "terms": ["mutation", "tile"],
+    "text": "The MCP server sends its own operating instructions when a client connects, and assumes that client has nothing installed. shadcn's Agent Skill is a local install activated by finding a `components.json`; it reaches an agent working in a checkout and never reaches one that connected over a socket -- which is most agents that will ever use a dashboard, and exactly the population the product is defined around. Rejected: verifying that a connected agent holds the instructions. A server cannot observe its client's context, so any check would be theatre; unconditional delivery removes the thing there would be to verify. Consequence: anything a connecting agent must know belongs in the connect-time instructions or in a tool's own description, never in a document it would have to go and find. B1's acceptance check therefore runs against an agent with nothing installed and no copy of the repository."
   },
   "D48": {
     "terms": [],

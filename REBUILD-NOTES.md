@@ -82,3 +82,16 @@ Four independent breaks, any one of them sufficient. Named here because a reader
 2. **`assemble-card-template` asked for a format with no reference.** It wanted a composition tree of components, and nothing told the agent what props any component accepted.
 3. **Assembled templates never rendered.** The client rendered from a map compiled in at build time that nothing rebuilt from the promoted manifest.
 4. **Layout was one-dimensional.** `insert-card` took only a card id and an index. Best possible output was a single-column stack.
+
+## Two security follow-ups, closed by deletion
+
+`.handoff/2026-09-07-security-followups.md` held two open items against
+`ConnectionStore` and `SecretBox` — decrypting an envelope to answer an
+existence question, and one unreadable credential 500-ing a whole endpoint.
+
+**Neither was fixed. Both are moot.** D47 removed the subsystem: the project
+stores no sealed material, so there is nothing to decrypt and no envelope to
+misread. Recorded here so the deleted file does not read later as two
+abandoned security bugs. If encryption at rest ever returns, re-derive them —
+the underlying rule is that reaching through a credential seam for something
+that is not a credential is a smell.

@@ -12,6 +12,11 @@ other source wins, without exception. Treat this file as historical context
 for the product's original goals, not as a current requirement, and verify
 anything load-bearing against the real thing before relying on it.
 
+**Its vocabulary is retired.** This document says "card", "card template",
+"font scaling", and "agent permissions configured in Settings". None of those
+are project terms any more — see `CONTEXT.md`, and `REBUILD-NOTES.md` for the
+renames. Read the goals here; take no word from here.
+
 Draft product specification: what the product must do. Items without a decision are explicitly marked **Open**.
 
 This document does not describe how the product is built, and does not define terms. See [`ARCHITECTURE.md`](../ARCHITECTURE.md) and [`CONTEXT.md`](../CONTEXT.md).

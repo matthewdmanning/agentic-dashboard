@@ -31,12 +31,12 @@ See `REBUILD-NOTES.md` for the renames, the corrections not to revert, and what 
 
 Not a new repository. This one carries 69 closed issues, CI configuration, the vendored shadcn Agent Skill, and the specs themselves; a fresh repo throws all of that away to avoid a contamination risk that `REBUILD-NOTES.md` already handles. Git keeps the deleted code recoverable, so the deletion is reversible and the working tree is clean from commit one.
 
-Do not carry forward: `globals-example.css` at the repo root (see N2, confirmed), and anything in the deletion table in `REBUILD-NOTES.md`.
+Do not reintroduce root-level `globals-example.css` (see N2), and do not carry forward anything in the deletion table in `REBUILD-NOTES.md`.
 
 ### Shape
 
 - One package on npm. `aliases.ui` and `aliases.components` already route base components and blocks to separate targets, so the CLI decides placement without a workspace boundary.
-- Vendor shadcn's Agent Skill (`npx skills add shadcn/ui`) so every model receives identical instructions. `skills-lock.json` already vendors it.
+- shadcn's Agent Skill gives every model identical instructions. `skills-lock.json` pins it by content hash; the content itself is per-machine and gitignored, so a fresh clone restores it with `npm run skills:install`. Pinned, not vendored — the distinction matters, because a clone without that step has no skill at all.
 - Own registry registered in `components.json`; discovery comes from `shadcn search` / `view` / `add`, not a bespoke tool.
 - Project MCP server shrinks to what shadcn cannot do: tile placement and tile data. A few tools, not ~28.
 
@@ -44,12 +44,12 @@ Do not carry forward: `globals-example.css` at the repo root (see N2, confirmed)
 
 Each of the four breaks in section B gets a check that fails today. Phase 2 is not done until all four pass, judged from a **cold agent session** with no prior context.
 
-| #      | Capability       | Passes when                                                                                                                                                                                         |
-| ------ | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **B1** | Tile discovery   | An agent names every available tile and each one's required state keys using only `shadcn search` / `view` against the dashboard's own registry — no project source read, no project-specific tool. |
-| **B2** | Authoring        | An agent adds a new tile by writing TSX plus a JSON Schema. `tsc --noEmit` passes. Deliberately mismatching the schema against the component's props makes it fail.                                 |
-| **B3** | New tiles render | A tile added while the server is running renders after a browser reload, with no client rebuild and no restart.                                                                                     |
-| **B4** | Layout           | "Put these two side by side" produces one row of two `md` tiles. "Make it full width" produces one `lg`. The result is visibly a grid, not a stack.                                                 |
+| #      | Capability       | Passes when                                                                                                                                                                                                                                                         |
+| ------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B1** | Tile discovery   | An agent with **nothing installed locally and no copy of this repository** names every available tile and each one's required state keys, working only from what the MCP server sent on connect plus `shadcn search` / `view` against the dashboard's own registry. |
+| **B2** | Authoring        | An agent adds a new tile by writing TSX plus a JSON Schema. `tsc --noEmit` passes. Deliberately mismatching the schema against the component's props makes it fail.                                                                                                 |
+| **B3** | New tiles render | A tile added while the server is running renders after a browser reload, with no client rebuild and no restart.                                                                                                                                                     |
+| **B4** | Layout           | "Put these two side by side" produces one row of two `md` tiles. "Make it full width" produces one `lg`. The result is visibly a grid, not a stack.                                                                                                                 |
 
 ### Non-negotiable, no shortcuts
 
@@ -150,7 +150,7 @@ Sources: shadcn doc pages fetched directly, plus the packaged `shadcn` skill, wh
 
 ## Open items — none
 
-**N2 — global-CSS mis-detection. CONFIRMED, 2026-09-10.** `shadcn info` reports `project.tailwindCss: globals-example.css` while `resolvedPaths.tailwindCss` is `C:\GitHub\agentic-dashboard\src\styles.css` — two different files. `globals-example.css` exists at the repo root (4,224 bytes) and is being detected as the project's global stylesheet. `apply --only theme` would write to the wrong file.
+**N2 — global-CSS mis-detection. CONFIRMED, 2026-09-10.** `shadcn info` reports `project.tailwindCss: globals-example.css` while `resolvedPaths.tailwindCss` is `C:\GitHub\agentic-dashboard\src\styles.css` — two different files. The 4,224-byte `globals-example.css` at the repo root was being detected as the project's global stylesheet, so `apply --only theme` would have written to the wrong file. **Deleted 2026-09-10.**
 
 **Action for Phase 2: no `globals-example.css` at the repo root.** If an example stylesheet is wanted, it goes in `docs/` under a name the CLI will not mistake for the real one.
 
@@ -190,10 +190,10 @@ Standing instructions from the user this session:
 
 - Branch `docs-shadcn-vocabulary-repair` at `3be56b3`, working tree clean. `main` at `4fb5d11`, matching `origin/main`.
 - `src/` and `e2e/` hold 81 tracked files that Phase 2 deletes. The suite still passes; it is not kept green from here.
-- `globals-example.css` at the repo root — do not carry forward (N2).
+- Root `globals-example.css` deleted (N2). `.vscode/settings.json` and `.codex/environments/environment.toml` untracked; both were tracked despite `.gitignore` naming them. Two stale worktrees removed from `.claude/worktrees/`; branches `worktree-impl-notes` (`bb96b00`) and `worktree-task-list-card` (`3be6a0c`) keep their commits.
 - **All open GitHub issues were deleted** at the user's instruction (#80, #99, #104, #105, #106, #107, #108). 69 closed issues remain untouched.
 - Backups: `C:\Users\mattm\.claude\plans\issue-backup-2026-09-09\` — one JSON per deleted issue with full body, plus `issues.json` holding all 76.
-- Untracked: `.handoff/2026-09-09-shadcn-registry-architecture.md` — **superseded**. It argues keep-the-manifest on the grounds that "a registry item carries no data schema" (its line 53). That premise is wrong; `meta` holds arbitrary JSON. Do not follow its plan.
+- `.handoff/` is empty. Three notes were deleted 2026-09-10: a superseded registry-architecture handoff, a review of code being removed, and two security follow-ups made moot by D47 (recorded in `REBUILD-NOTES.md`).
 
 ---
 
@@ -217,7 +217,8 @@ Phase 1 is complete and both open verifications are resolved. Nothing is left to
 
 1. Call the `shadcn` skill to load live project context.
 2. Read `CONTEXT.md`, then `ARCHITECTURE.md`, then `REBUILD-NOTES.md` — in that order. The first two bind; the third only stops you being misled by code that is about to be deleted.
-3. Branch off `docs-shadcn-vocabulary-repair`. First commit deletes `src/` and `e2e/` and removes root `globals-example.css`. Git holds the old tree; nothing is lost.
+3. Branch off `docs-shadcn-vocabulary-repair`. First commit deletes `src/` and `e2e/`. Git holds the old tree; nothing is lost.
+   **CI goes red at that commit and stays red until the app builds again** — `on: push` has no branch filter, so `validate` runs `typecheck` and `test` against a tree with neither. That is expected and left alone: the suite is not kept green, red is honest signal, and this branch is nowhere near `main`.
 4. `npx shadcn@latest init` against the existing `components.json` — preset `b2fA`, Vite, one package, no `--monorepo`.
 5. Build toward B1 first. Nothing else can be demonstrated until an agent can discover a tile and its schema.
 6. Each of B1–B4 gets its check written before the capability, and each check is run from a cold agent session.

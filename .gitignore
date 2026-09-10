@@ -35,3 +35,6 @@ playwright-report/
 # Agent skills, installed per-machine
 .claude/skills/
 !.claude/skills/run-agentic-dashboard/
+
+# Editor and agent-tool local configuration
+.vscode/

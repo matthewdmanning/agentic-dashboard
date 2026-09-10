@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx src/server/index.ts",
     "init": "tsx src/scripts/init-dashboard.ts",
+    "skills:install": "npx --yes skills@latest experimental_install",
     "build": "tsc --noEmit && vite build",
     "mcp": "tsx src/mcp/index.ts",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
