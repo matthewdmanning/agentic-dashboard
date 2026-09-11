@@ -16,6 +16,9 @@ export const E2E_PORT = Number(process.env.PORT) || 5174;
 
 export default defineConfig({
   testDir: "e2e",
+  // Seeds the run's workspace from `test-dashboard-config/` and, on the way
+  // out, proves the run never wrote back to it.
+  globalSetup: "./e2e/support/workspace.ts",
   // One worker, one server, one workspace. B3 adds and removes a registry item
   // while the server watches it, which would rewrite the registry underneath
   // B1's discovery assertions if the two specs overlapped.

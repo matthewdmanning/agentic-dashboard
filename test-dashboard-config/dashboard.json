@@ -1,0 +1,51 @@
+{
+  "tiles": [
+    {
+      "id": "active-services",
+      "title": "Active services",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Active services",
+        "VALUE": 12
+      }
+    },
+    {
+      "id": "failed-checks",
+      "title": "Failed checks",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Failed checks",
+        "VALUE": 0
+      }
+    },
+    {
+      "id": "recent-activity",
+      "title": "Recent activity",
+      "item": "list-tile",
+      "state": {
+        "LIST_TITLE": "Recent activity",
+        "LIST_ITEMS": [
+          "Placeholder entry one",
+          "Placeholder entry two",
+          "Placeholder entry three",
+          "Placeholder entry four"
+        ]
+      }
+    },
+    {
+      "id": "queue-depth",
+      "title": "Queue depth",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Queue depth",
+        "VALUE": 43
+      }
+    }
+  ],
+  "references": [
+    { "tileId": "active-services", "size": "md" },
+    { "tileId": "failed-checks", "size": "md" },
+    { "tileId": "recent-activity", "size": "lg" },
+    { "tileId": "queue-depth", "size": "sm" }
+  ]
+}
