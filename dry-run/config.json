@@ -1,0 +1,26 @@
+{
+  "fixtureDirectory": "dry-run/workspace",
+  "workingDirectory": ".dry-run",
+  "workingFolderPrefix": "workspace-",
+  "activeRunFile": "active-run.json",
+  "commands": {
+    "dashboard": "src/server/index.ts",
+    "mcp": "src/mcp/index.ts"
+  },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 5173,
+    "startupTimeout": 120000,
+    "pollInterval": 250
+  },
+  "supportingFiles": [
+    { "source": "components.json", "target": "components.json" },
+    { "source": "registry.json", "target": "registry.json" },
+    { "source": "src/styles.css", "target": "src/styles.css" }
+  ],
+  "defaults": {
+    "componentsConfig": "components.json",
+    "themeStylesheet": "src/styles.css",
+    "registry": "http://localhost:5173/r/registry.json"
+  }
+}

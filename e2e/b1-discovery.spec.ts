@@ -9,7 +9,7 @@ import { promisify } from "node:util";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
-import { E2E_PORT, E2E_WORKSPACE } from "../playwright.config";
+import { E2E_CONFIG, E2E_ORIGIN, E2E_WORKSPACE } from "../playwright.config";
 
 /**
  * B1 — tile discovery (see `SHADCN_REWRITE_PLAN.md`): an agent with nothing
@@ -25,8 +25,7 @@ test.describe.configure({ mode: "serial" });
 
 const execAsync = promisify(exec);
 
-const PORT = E2E_PORT;
-const REGISTRY_URL = `http://127.0.0.1:${PORT}/r/registry.json`;
+const REGISTRY_URL = `${E2E_ORIGIN}/r/registry.json`;
 
 interface RegistryItem {
   name: string;
@@ -53,7 +52,7 @@ async function runShadcn(args: string, cwd: string): Promise<string> {
   try {
     const { stdout } = await execAsync(`npx shadcn@latest ${args}`, {
       cwd,
-      timeout: 60_000,
+      timeout: E2E_CONFIG.tests.discoverySearchTimeout,
     });
     return stdout;
   } catch (error) {
@@ -80,7 +79,7 @@ async function withTempDir(fn: (dir: string) => Promise<void>): Promise<void> {
 }
 
 test("shadcn search, from a directory with no components.json and no package.json, names every registry item", async () => {
-  test.setTimeout(90_000);
+  test.setTimeout(E2E_CONFIG.tests.discoverySearchTimeout);
   await withTempDir(async (dir) => {
     expect(existsSync(path.join(dir, "components.json"))).toBe(false);
     expect(existsSync(path.join(dir, "package.json"))).toBe(false);
@@ -94,11 +93,11 @@ test("shadcn search, from a directory with no components.json and no package.jso
 });
 
 test("shadcn view reports each item's required state keys exactly as declared in registry.json", async () => {
-  test.setTimeout(120_000);
+  test.setTimeout(E2E_CONFIG.tests.discoveryViewTimeout);
   await withTempDir(async (dir) => {
     for (const item of registry.items) {
       const stdout = await runShadcn(
-        `view http://127.0.0.1:${PORT}/r/${item.name}.json`,
+        `view ${E2E_ORIGIN}/r/${item.name}.json`,
         dir,
       );
       const jsonStart = stdout.indexOf("[");
@@ -116,9 +115,9 @@ test("shadcn view reports each item's required state keys exactly as declared in
 });
 
 test("the MCP server's connect-time instructions name the registry URL and both discovery commands", async () => {
-  test.setTimeout(30_000);
+  test.setTimeout(E2E_CONFIG.tests.discoveryMcpTimeout);
   const transport = new StdioClientTransport({
-    command: "npm",
+    command: process.platform === "win32" ? "npm.cmd" : "npm",
     args: ["run", "mcp"],
     cwd: process.cwd(),
     env: { DASHBOARD_WORKSPACE: E2E_WORKSPACE },

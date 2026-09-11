@@ -2,19 +2,18 @@ import { createHash } from "node:crypto";
 import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
+import { loadE2EConfig } from "./config";
+
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-const FIXTURE_DIR = path.join(REPO_ROOT, "test-dashboard-config");
 
 /**
- * `test-dashboard-config/` is the starting state every run shares, so a run
- * must not be able to change it: a check that edits the fixture it started
- * from stops being repeatable, and the next run inherits the last one's
- * leftovers. Specs mutate a copy, and the originals are hashed before and
- * after to prove nothing reached them.
+ * `dry-run/workspace/` is the committed starting state. Each test run gets a
+ * unique copy so a check that edits its fixture cannot affect another run,
+ * and the original is hashed before and after to prove nothing reached it.
  */
-const hashFixture = (): string => {
+const hashFixture = (fixtureDir: string): string => {
   const digest = createHash("sha256");
-  const entries = readdirSync(FIXTURE_DIR, {
+  const entries = readdirSync(fixtureDir, {
     recursive: true,
     withFileTypes: true,
   })
@@ -23,7 +22,7 @@ const hashFixture = (): string => {
     .sort();
 
   for (const file of entries) {
-    digest.update(path.relative(FIXTURE_DIR, file));
+    digest.update(path.relative(fixtureDir, file));
     digest.update(readFileSync(file));
   }
   return digest.digest("hex");
@@ -31,26 +30,36 @@ const hashFixture = (): string => {
 
 /** Returns its own teardown, so the before-hash stays in scope rather than crossing a module boundary. */
 export default function seedWorkspace(): () => void {
-  const before = hashFixture();
+  const config = loadE2EConfig();
+  const fixtureDir = path.resolve(REPO_ROOT, config.fixtureDirectory);
+  const workspace = process.env.E2E_RUN_WORKSPACE;
+  if (!workspace)
+    throw new Error(
+      "E2E_RUN_WORKSPACE must be initialized by playwright.config.ts",
+    );
 
-  const workspace = path.join(
-    REPO_ROOT,
-    process.env.DASHBOARD_WORKSPACE ?? ".e2e-workspace",
-  );
+  const before = hashFixture(fixtureDir);
   rmSync(workspace, { recursive: true, force: true });
   mkdirSync(workspace, { recursive: true });
-  cpSync(FIXTURE_DIR, workspace, { recursive: true });
-  // Documentation, not dashboard state — the app would ignore it, but a copy
-  // of it sitting in a workspace invites someone to treat it as one.
-  rmSync(path.join(workspace, "README.md"), { force: true });
+  cpSync(fixtureDir, workspace, { recursive: true });
+  for (const entry of config.excludeFromWorkspace)
+    rmSync(path.join(workspace, entry), { force: true });
+  for (const file of config.supportingFiles) {
+    const destination = path.join(workspace, file.target);
+    mkdirSync(path.dirname(destination), { recursive: true });
+    cpSync(path.resolve(REPO_ROOT, file.source), destination);
+  }
 
   return () => {
-    const after = hashFixture();
-    if (after !== before) {
-      throw new Error(
-        `test-dashboard-config/ changed during the run (${before.slice(0, 12)} -> ${after.slice(0, 12)}). ` +
-          "Specs must mutate the copied workspace, never the fixture.",
-      );
+    try {
+      const after = hashFixture(fixtureDir);
+      if (after !== before)
+        throw new Error(
+          `test fixture changed during the run (${before.slice(0, 12)} -> ${after.slice(0, 12)}). ` +
+            "Specs must mutate the copied workspace, never the fixture.",
+        );
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
     }
   };
 }

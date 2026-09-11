@@ -31,6 +31,7 @@ Thumbs.db
 # `test-results/`, which Playwright wipes at the start of every run.
 screenshots/
 .e2e-workspace*/
+.dry-run/
 test-results/
 playwright-report/
 

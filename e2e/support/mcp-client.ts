@@ -3,12 +3,6 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-// Spawned via node + tsx's CLI entry directly, rather than "npx tsx", so the
-// transport never has to resolve a .cmd shim through Windows' PATHEXT — a
-// plain `spawn(command, args, { shell: false })` (which is what the SDK
-// transport does) can't find "npx" on Windows without a shell.
-const TSX_CLI = path.join(REPO_ROOT, "node_modules/tsx/dist/cli.mjs");
-const MCP_ENTRY = path.join(REPO_ROOT, "src/mcp/index.ts");
 
 /**
  * One stdio connection to the dashboard's MCP server, scoped to a single
@@ -33,8 +27,8 @@ export async function connectMcpClient(
   workspace: string,
 ): Promise<McpTestClient> {
   const transport = new StdioClientTransport({
-    command: process.execPath,
-    args: [TSX_CLI, MCP_ENTRY],
+    command: process.platform === "win32" ? "npm.cmd" : "npm",
+    args: ["run", "mcp"],
     cwd: REPO_ROOT,
     env: { ...process.env, DASHBOARD_WORKSPACE: workspace },
   });

@@ -2,7 +2,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 import type { Tile, TileReference, TileSize } from "@/dashboard/types";
 import { connectMcpClient, type McpTestClient } from "./support/mcp-client";
-import { E2E_WORKSPACE } from "../playwright.config";
+import { E2E_CONFIG, E2E_WORKSPACE } from "../playwright.config";
 
 /**
  * B4 acceptance check (SHADCN_REWRITE_PLAN.md): "put these two side by side"
@@ -18,9 +18,7 @@ import { E2E_WORKSPACE } from "../playwright.config";
 const WORKSPACE = E2E_WORKSPACE;
 // Sub-pixel layout rounding tolerance. Generous enough to absorb browser
 // rounding, tight enough that a real one-column-width miss still fails.
-const TOLERANCE_PX = 2;
-
-test.use({ viewport: { width: 1280, height: 900 } });
+const TOLERANCE_PX = E2E_CONFIG.tests.layoutTolerancePx;
 
 test.describe("B4 — layout", () => {
   test.describe.configure({ mode: "serial" }); // one shared workspace/dashboard.json — no concurrent apply calls

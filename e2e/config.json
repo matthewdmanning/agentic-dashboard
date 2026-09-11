@@ -1,0 +1,36 @@
+{
+  "fixtureDirectory": "dry-run/workspace",
+  "workspacePrefix": ".e2e-workspace-",
+  "excludeFromWorkspace": ["README.md"],
+  "supportingFiles": [
+    { "source": "components.json", "target": "components.json" },
+    { "source": "registry.json", "target": "registry.json" },
+    { "source": "src/styles.css", "target": "src/styles.css" }
+  ],
+  "server": {
+    "host": "127.0.0.1",
+    "port": 5174,
+    "command": "npm run dev",
+    "healthPath": "/api/dashboard",
+    "timeout": 120000,
+    "reuseExistingServer": false
+  },
+  "playwright": {
+    "testDirectory": "e2e",
+    "fullyParallel": false,
+    "workers": 1,
+    "viewport": {
+      "width": 1280,
+      "height": 900
+    }
+  },
+  "tests": {
+    "discoverySearchTimeout": 60000,
+    "discoveryViewTimeout": 120000,
+    "discoveryMcpTimeout": 30000,
+    "newTileTimeout": 180000,
+    "registryWaitTimeout": 90000,
+    "registryPollInterval": 500,
+    "layoutTolerancePx": 2
+  }
+}

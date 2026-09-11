@@ -1,0 +1,109 @@
+{
+  "tiles": [
+    {
+      "id": "active-projects",
+      "title": "Active projects",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Active projects",
+        "VALUE": 4
+      }
+    },
+    {
+      "id": "tasks-today",
+      "title": "Tasks today",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Tasks today",
+        "VALUE": 6
+      }
+    },
+    {
+      "id": "recent-activity",
+      "title": "Recent activity",
+      "item": "list-tile",
+      "state": {
+        "LIST_TITLE": "Recent activity",
+        "LIST_ITEMS": [
+          "Reviewed the morning plan",
+          "Finished the onboarding draft",
+          "Added accessibility follow-up",
+          "Closed the weekly review"
+        ]
+      }
+    },
+    {
+      "id": "upcoming-list",
+      "title": "Coming up",
+      "item": "list-tile",
+      "state": {
+        "LIST_TITLE": "Coming up",
+        "LIST_ITEMS": [
+          "Team check-in — Tuesday at 10:00 AM",
+          "Review notes — Wednesday afternoon",
+          "Submit travel receipts — Friday"
+        ]
+      }
+    },
+    {
+      "id": "reading-queue",
+      "title": "Reading queue",
+      "item": "list-tile",
+      "state": {
+        "LIST_TITLE": "Reading queue",
+        "LIST_ITEMS": [
+          "Operations notes — chapter 4",
+          "Product brief — accessibility section",
+          "Research summary — final pass"
+        ]
+      }
+    },
+    {
+      "id": "focus-minutes",
+      "title": "Focus minutes",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Focus minutes",
+        "VALUE": 90
+      }
+    },
+    {
+      "id": "completed-this-week",
+      "title": "Completed this week",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Completed this week",
+        "VALUE": 18
+      }
+    },
+    {
+      "id": "inbox-zero",
+      "title": "Inbox zero",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Inbox zero",
+        "VALUE": 1
+      }
+    },
+    {
+      "id": "streak-days",
+      "title": "Streak days",
+      "item": "stat-tile",
+      "state": {
+        "LABEL": "Streak days",
+        "VALUE": 6
+      }
+    }
+  ],
+  "references": [
+    { "tileId": "active-projects", "size": "md" },
+    { "tileId": "tasks-today", "size": "md" },
+    { "tileId": "recent-activity", "size": "lg" },
+    { "tileId": "upcoming-list", "size": "md" },
+    { "tileId": "reading-queue", "size": "md" },
+    { "tileId": "focus-minutes", "size": "sm" },
+    { "tileId": "completed-this-week", "size": "sm" },
+    { "tileId": "inbox-zero", "size": "sm" },
+    { "tileId": "streak-days", "size": "sm" }
+  ]
+}

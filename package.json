@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsx src/server/index.ts",
     "mcp": "tsx src/mcp/index.ts",
+    "dry-run": "tsx dry-run/runner.ts dashboard",
+    "dry-run:mcp": "tsx dry-run/runner.ts mcp",
     "registry:build": "tsx scripts/registry-schemas.ts && npx --yes shadcn@latest build",
     "typecheck": "tsx scripts/registry-schemas.ts && tsc --noEmit",
     "test": "vitest run",

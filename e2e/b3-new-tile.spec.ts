@@ -6,7 +6,12 @@ import { promisify } from "node:util";
 
 import type { Tile } from "@/dashboard/types";
 import { connectMcpClient, type McpTestClient } from "./support/mcp-client";
-import { E2E_PORT, E2E_WORKSPACE } from "../playwright.config";
+import {
+  E2E_CONFIG,
+  E2E_ORIGIN,
+  E2E_PORT,
+  E2E_WORKSPACE,
+} from "../playwright.config";
 
 /**
  * B3 acceptance check (SHADCN_REWRITE_PLAN.md): "a tile added while the
@@ -27,7 +32,7 @@ const execAsync = promisify(exec);
 
 const WORKSPACE = E2E_WORKSPACE;
 const PORT = E2E_PORT;
-const REGISTRY_URL = `http://127.0.0.1:${PORT}/r/registry.json`;
+const REGISTRY_URL = `${E2E_ORIGIN}/r/registry.json`;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const REGISTRY_JSON_PATH = path.join(REPO_ROOT, "registry.json");
@@ -112,7 +117,7 @@ test.describe("B3 — new tiles render", () => {
   test("a tile added while the server runs renders after reload, served by the same process throughout", async ({
     page,
   }) => {
-    test.setTimeout(180_000);
+    test.setTimeout(E2E_CONFIG.tests.newTileTimeout);
 
     // 1. Before the item exists anywhere, its content must not be on the
     // page. Without this half, the test would pass even against a tile that
@@ -145,7 +150,7 @@ test.describe("B3 — new tiles render", () => {
 
     // 3. Wait for the debounced rebuild to finish — poll the observable
     // outcome (the served registry), never a fixed sleep.
-    await waitForRegistryItem(true, 90_000);
+    await waitForRegistryItem(true, E2E_CONFIG.tests.registryWaitTimeout);
 
     // 4. Place a tile of the new item on the dashboard through the same MCP
     // `apply` tool an agent would use — never by writing dashboard.json
@@ -267,7 +272,9 @@ async function waitForRegistryItem(
           `${present ? "present in" : "removed from"} ${REGISTRY_URL}`,
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    await new Promise((resolve) =>
+      setTimeout(resolve, E2E_CONFIG.tests.registryPollInterval),
+    );
   }
 }
 
@@ -305,7 +312,7 @@ async function removeFixture(): Promise<void> {
   rmSync(FIXTURE_COMPONENT_PATH, { force: true });
   if (originalRegistryJson)
     writeFileSync(REGISTRY_JSON_PATH, originalRegistryJson, "utf8");
-  await waitForRegistryItem(false, 90_000);
+  await waitForRegistryItem(false, E2E_CONFIG.tests.registryWaitTimeout);
   rmSync(FIXTURE_BUILT_PATH, { force: true });
   rmSync(path.join(REPO_ROOT, WORKSPACE, "dashboard.json"), { force: true });
 }
