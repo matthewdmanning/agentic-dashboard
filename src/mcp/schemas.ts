@@ -8,10 +8,24 @@ import type { Mutation } from "../dashboard/types";
  */
 export const tileSizeSchema = z.enum(["sm", "md", "lg"]);
 
+/**
+ * Enforced, not merely described. Leaving the shape of an id to each caller
+ * is variance: the same request would produce `open-issues` from one model
+ * and `openIssuesTile_1` from another, for a value that appears in stored
+ * state and in every later mutation that names the tile.
+ */
+const TILE_ID = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 export const tileSchema = z.object({
   id: z
     .string()
-    .describe("Stable identifier for this tile, unique within the dashboard."),
+    .regex(
+      TILE_ID,
+      "A tile id is lowercase kebab-case: letters and digits, single hyphens between words (for example `open-issues`).",
+    )
+    .describe(
+      "Stable identifier for this tile, unique within the dashboard. Lowercase kebab-case — letters, digits and single hyphens, e.g. `open-issues`. Name it for what the tile shows, not for its position or its type, since both can change while the id cannot.",
+    ),
   title: z.string().describe("Human-readable title shown on the tile."),
   item: z
     .string()

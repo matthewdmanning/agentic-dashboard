@@ -78,8 +78,10 @@ server.registerTool(
     title: "Apply mutations",
     description:
       "Applies one or more mutations to the dashboard atomically and persists the result. " +
-      'Reports "status": "applied" when the change is live now, or "queued" when it will replay later — ' +
-      "never leave a caller to infer which. " +
+      'Reports "status": "applied" when the change is live now, or "queued" when it is held to replay later. ' +
+      'Today it is always "applied": queueing exists for mutations made while the server cannot reach ' +
+      "something they depend on, and nothing the dashboard currently does can be offline, so no path " +
+      'returns "queued" yet. Read the status rather than assuming either one — that is why it is reported. ' +
       "If any mutation fails, none are applied; the failure is reported by the interface's own name " +
       '("unknown-tile", "duplicate-tile", "unknown-item", or "invalid-state"), never as prose to pattern-match.',
     inputSchema: z.object({
