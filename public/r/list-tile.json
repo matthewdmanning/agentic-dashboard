@@ -1,0 +1,36 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "list-tile",
+  "title": "List Tile",
+  "description": "Displays a titled list of items.",
+  "files": [
+    {
+      "path": "src/registry/list-tile.tsx",
+      "content": "import { Card, CardContent, CardHeader, CardTitle } from \"@/components/ui/card\"\nimport { schemas } from \"./schemas.generated\"\nimport type { JsonSchemaToType } from \"./schema\"\n\ntype ListTileProps = JsonSchemaToType<(typeof schemas)[\"list-tile\"]>\n\nexport default function ListTile({ LIST_TITLE, LIST_ITEMS }: ListTileProps) {\n  return (\n    <Card>\n      <CardHeader>\n        <CardTitle>{LIST_TITLE}</CardTitle>\n      </CardHeader>\n      <CardContent>\n        <ul className=\"flex flex-col gap-1 text-sm text-muted-foreground\">\n          {LIST_ITEMS.map((item, index) => (\n            <li key={index}>{item}</li>\n          ))}\n        </ul>\n      </CardContent>\n    </Card>\n  )\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "meta": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "LIST_TITLE": {
+          "type": "string",
+          "default": ""
+        },
+        "LIST_ITEMS": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "LIST_TITLE",
+        "LIST_ITEMS"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "registry:component"
+}

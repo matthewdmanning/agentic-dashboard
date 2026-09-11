@@ -1,0 +1,67 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry.json",
+  "name": "agentic-dashboard",
+  "homepage": "https://github.com/matthewdmanning/agentic-dashboard",
+  "items": [
+    {
+      "name": "stat-tile",
+      "type": "registry:component",
+      "title": "Stat Tile",
+      "description": "Displays a labeled numeric value.",
+      "files": [
+        {
+          "path": "src/registry/stat-tile.tsx",
+          "type": "registry:component"
+        }
+      ],
+      "meta": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "LABEL": {
+              "type": "string",
+              "default": ""
+            },
+            "VALUE": {
+              "type": "number",
+              "default": 0
+            }
+          },
+          "required": ["LABEL", "VALUE"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "name": "list-tile",
+      "type": "registry:component",
+      "title": "List Tile",
+      "description": "Displays a titled list of items.",
+      "files": [
+        {
+          "path": "src/registry/list-tile.tsx",
+          "type": "registry:component"
+        }
+      ],
+      "meta": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "LIST_TITLE": {
+              "type": "string",
+              "default": ""
+            },
+            "LIST_ITEMS": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": ["LIST_TITLE", "LIST_ITEMS"],
+          "additionalProperties": false
+        }
+      }
+    }
+  ]
+}

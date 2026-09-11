@@ -6,21 +6,21 @@ What you need, and where it lives. This file routes; it does not restate. Where 
 
 ## Read before working
 
-| You need                                                                                                             | Read                                                                                  |
-| -------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| What a term means in context of project                                                                              | [`CONTEXT.md`](CONTEXT.md)                                                            |
-| What the application does, and what is deferred to shadcn                                                            | [`ARCHITECTURE.md`](ARCHITECTURE.md)                                                  |
-| What is being rebuilt, in what order, and when it is done                                                            | [`SHADCN_REWRITE_PLAN.md`](SHADCN_REWRITE_PLAN.md)                                    |
-| What the old code called things, and corrections not to revert                                                       | [`REBUILD-NOTES.md`](REBUILD-NOTES.md) — temporary, delete after Phase 2              |
-| The MCP tool surface                                                                                                 | Does not exist yet. Phase 2 builds it; see the plan. Do not infer it from `src/mcp/`. |
-| shadcn/ui documentation — index of every page, for lookup                                                            | <https://ui.shadcn.com/llms.txt>                                                      |
-| How `components.json` works, field by field                                                                          | <https://ui.shadcn.com/docs/components-json>                                          |
-| Available script commands                                                                                            | `package.json` scripts                                                                |
-| Agent skills this repo pins, and how to install them on a fresh clone                                                | [`skills-lock.json`](skills-lock.json); run `npm run skills:install`                  |
-| Git commit message style                                                                                             | Conventional Commits; see `git log`                                                   |
-| Why something was decided, and what was rejected — explains, does not bind                                           | [`docs/agents/rationale.json`](docs/agents/rationale.json), by id or term             |
-| Notes left by a previous session, not yet promoted anywhere durable                                                  | [`.handoff/`](.handoff/) — see rules below                                            |
-| Original product goals — lowest authority in the repo, unmaintained since the shadcn rewrite, verify before trusting | [`docs/product-spec.md`](docs/product-spec.md)                                        |
+| You need                                                                                                             | Read                                                                                                                                                                                                                                                                       |
+| -------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What a term means in context of project                                                                              | [`CONTEXT.md`](CONTEXT.md)                                                                                                                                                                                                                                                 |
+| What the application does, and what is deferred to shadcn                                                            | [`ARCHITECTURE.md`](ARCHITECTURE.md)                                                                                                                                                                                                                                       |
+| What is being rebuilt, in what order, and when it is done                                                            | [`SHADCN_REWRITE_PLAN.md`](SHADCN_REWRITE_PLAN.md)                                                                                                                                                                                                                         |
+| What the old code called things, and corrections not to revert                                                       | [`REBUILD-NOTES.md`](REBUILD-NOTES.md) — temporary, delete after Phase 2                                                                                                                                                                                                   |
+| The MCP tool surface                                                                                                 | [`src/mcp/instructions.ts`](src/mcp/instructions.ts) — the text sent to every connecting client — and the tool descriptions in [`src/mcp/index.ts`](src/mcp/index.ts). A connecting agent is told everything it needs; nothing about the surface lives only in a document. |
+| shadcn/ui documentation — index of every page, for lookup                                                            | <https://ui.shadcn.com/llms.txt>                                                                                                                                                                                                                                           |
+| How `components.json` works, field by field                                                                          | <https://ui.shadcn.com/docs/components-json>                                                                                                                                                                                                                               |
+| Available script commands                                                                                            | `package.json` scripts                                                                                                                                                                                                                                                     |
+| Agent skills this repo pins, and how to install them on a fresh clone                                                | [`skills-lock.json`](skills-lock.json); run `npm run skills:install`                                                                                                                                                                                                       |
+| Git commit message style                                                                                             | Conventional Commits; see `git log`                                                                                                                                                                                                                                        |
+| Why something was decided, and what was rejected — explains, does not bind                                           | [`docs/agents/rationale.json`](docs/agents/rationale.json), by id or term                                                                                                                                                                                                  |
+| Notes left by a previous session, not yet promoted anywhere durable                                                  | [`.handoff/`](.handoff/) — see rules below                                                                                                                                                                                                                                 |
+| Original product goals — lowest authority in the repo, unmaintained since the shadcn rewrite, verify before trusting | [`docs/product-spec.md`](docs/product-spec.md)                                                                                                                                                                                                                             |
 
 ## Handoff notes
 
@@ -42,6 +42,12 @@ truth, not routed to for facts about the project.
 - Never commit credentials, tokens, personal content, or sensitive field names or values. Fixtures are placeholder-only.
 - Do not derive current requirements or criteria from material marked legacy, quarantined, superseded, archived, or backup.
 
-## When documents disagree
+## Documentation Updates and Conflicts
+
+Documentation must updated when editing and writing coding that changes the function of the code.
 
 Each fact has exactly one home. Two documents stating the same fact is a bug — raise the issue if discovered.
+
+## Test Writing Policy
+
+All tests must be load-bearing, falsifiable, and probable during real-world use.

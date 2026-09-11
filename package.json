@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/server/index.ts",
-    "init": "tsx src/scripts/init-dashboard.ts",
-    "skills:install": "npx --yes skills@latest experimental_install",
-    "build": "tsc --noEmit && vite build",
     "mcp": "tsx src/mcp/index.ts",
+    "registry:build": "tsx scripts/registry-schemas.ts && npx --yes shadcn@latest build",
+    "typecheck": "tsx scripts/registry-schemas.ts && tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "skills:install": "npx --yes skills@latest experimental_install",
+    "build": "npm run typecheck && vite build",
     "check": "npm run format:check && npm run typecheck && npm test && npm run build",
     "format": "npx --yes prettier@3.6.2 --write \"**/*.md\" \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.ts\"",
-    "format:check": "npx --yes prettier@3.6.2 --check \"**/*.md\" \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.ts\"",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "test:e2e": "tsx e2e/prepare-workspace.ts && playwright test"
+    "format:check": "npx --yes prettier@3.6.2 --check \"**/*.md\" \"src/**/*.{ts,tsx}\" \"e2e/**/*.ts\" \"*.ts\""
   },
   "dependencies": {
     "@base-ui/react": "^1.8.0",

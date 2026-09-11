@@ -1,8 +1,8 @@
 # shadcn Rewrite Plan — agentic-dashboard
 
-**Date:** 2026-09-09, updated 2026-09-10
-**Repo:** `C:\GitHub\agentic-dashboard` (branch `docs-shadcn-vocabulary-repair`)
-**Status:** Phase 1 complete at `3be56b3`. Phase 2 not started.
+**Date:** 2026-09-09, updated 2026-09-11
+**Repo:** `C:\GitHub\agentic-dashboard` (branch `feat/shadcn-rebuild`)
+**Status:** Phase 1 complete at `3be56b3`. Phase 2 in progress — the old tree is deleted, shadcn is initialized, and the first registry items exist. None of B1–B4 passes yet.
 **Authoritative vocabulary source:** <https://ui.shadcn.com/llms.txt> and the pages it indexes.
 
 ---
@@ -188,8 +188,8 @@ Standing instructions from the user this session:
 
 ## Repo state
 
-- Branch `docs-shadcn-vocabulary-repair` at `3be56b3`, working tree clean. `main` at `4fb5d11`, matching `origin/main`.
-- `src/` and `e2e/` hold 81 tracked files that Phase 2 deletes. The suite still passes; it is not kept green from here.
+- Branch `feat/shadcn-rebuild`, off `docs-shadcn-vocabulary-repair`. `main` at `4fb5d11`, matching `origin/main`.
+- `src/` and `e2e/` were deleted at `2f7987e`. There is no test suite on this branch until the B1–B4 checks are written; CI is red and stays red, as planned.
 - Root `globals-example.css` deleted (N2). `.vscode/settings.json` and `.codex/environments/environment.toml` untracked; both were tracked despite `.gitignore` naming them. Two stale worktrees removed from `.claude/worktrees/`; branches `worktree-impl-notes` (`bb96b00`) and `worktree-task-list-card` (`3be6a0c`) keep their commits.
 - **All open GitHub issues were deleted** at the user's instruction (#80, #99, #104, #105, #106, #107, #108). 69 closed issues remain untouched.
 - Backups: `C:\Users\mattm\.claude\plans\issue-backup-2026-09-09\` — one JSON per deleted issue with full body, plus `issues.json` holding all 76.
@@ -213,14 +213,24 @@ Do **not** reach for `ponytail` on this work. The user explicitly rejected minim
 
 # Part 6 — First actions for Phase 2
 
-Phase 1 is complete and both open verifications are resolved. Nothing is left to decide before building.
+Steps 1-4 are done. What remains is the build itself.
 
-1. Call the `shadcn` skill to load live project context.
-2. Read `CONTEXT.md`, then `ARCHITECTURE.md`, then `REBUILD-NOTES.md` — in that order. The first two bind; the third only stops you being misled by code that is about to be deleted.
-3. Branch off `docs-shadcn-vocabulary-repair`. First commit deletes `src/` and `e2e/`. Git holds the old tree; nothing is lost.
+1. ~~Call the `shadcn` skill to load live project context.~~
+2. ~~Read `CONTEXT.md`, then `ARCHITECTURE.md`, then `REBUILD-NOTES.md`.~~
+3. ~~Branch off `docs-shadcn-vocabulary-repair`; first commit deletes `src/` and `e2e/`.~~ Done at `2f7987e`, on branch `feat/shadcn-rebuild`.
    **CI goes red at that commit and stays red until the app builds again** — `on: push` has no branch filter, so `validate` runs `typecheck` and `test` against a tree with neither. That is expected and left alone: the suite is not kept green, red is honest signal, and this branch is nowhere near `main`.
-4. `npx shadcn@latest init` against the existing `components.json` — preset `b2fA`, Vite, one package, no `--monorepo`.
+4. ~~`npx shadcn@latest init` against the existing `components.json`.~~ Done at `17b36d6`; first primitives at `bbbd8bb`.
 5. Build toward B1 first. Nothing else can be demonstrated until an agent can discover a tile and its schema.
-6. Each of B1–B4 gets its check written before the capability, and each check is run from a cold agent session.
+6. Each of B1–B4 gets a check, and each check is run from a cold agent session. **Departure from the original order:** the checks are being written after the capability, not before it, because three slices were built in parallel. The checks still gate the phase; only their order moved.
+
+## What is in scope for Phase 2, and what is not
+
+Phase 2's gate is B1–B4 and nothing else. `ARCHITECTURE.md` specifies accounts, roles, the permission decision, credentials, connections, integrations, queries, tile mappers, and the offline queue; none of them is built in this phase. That is section E's lesson applied — the original overrun was building exactly those before the product could produce a dashboard. They stay specified and unbuilt until B1–B4 pass.
+
+Consequences visible in the code today, each deliberate:
+
+- `apply` always reports `applied`; `queued` exists in the interface because a caller must never have to infer which happened, but nothing queues yet.
+- `read-dashboard` returns which categories it carries and which were withheld, with `withheld` always empty, because there is no permission check to withhold anything.
+- There is one anonymous caller. No account is resolved and no role is consulted.
 
 **Gate before Phase 3:** all four acceptance criteria pass. The screenshot harness compares models against each other on the new app; it needs an app that produces a dashboard first.

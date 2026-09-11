@@ -27,8 +27,10 @@ Thumbs.db
 .agents
 .codex/
 
-# End-to-end run artifacts
-.e2e-workspace/
+# End-to-end run artifacts. `screenshots/` is kept out of Playwright's
+# `test-results/`, which Playwright wipes at the start of every run.
+screenshots/
+.e2e-workspace*/
 test-results/
 playwright-report/
 
