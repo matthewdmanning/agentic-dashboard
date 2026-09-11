@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "agentic-dashboard-dry-run": {
+      "command": "node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "dry-run/runner.ts", "mcp"]
+    }
+  }
+}

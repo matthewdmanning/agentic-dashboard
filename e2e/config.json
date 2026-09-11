@@ -1,11 +1,8 @@
 {
   "fixtureDirectory": "dry-run/workspace",
   "workspacePrefix": ".e2e-workspace-",
-  "excludeFromWorkspace": ["README.md"],
-  "supportingFiles": [
-    { "source": "components.json", "target": "components.json" },
-    { "source": "registry.json", "target": "registry.json" },
-    { "source": "src/styles.css", "target": "src/styles.css" }
+  "excludeFromWorkspace": [
+    "README.md"
   ],
   "server": {
     "host": "127.0.0.1",

@@ -18,6 +18,13 @@ const DASHBOARD_DIR = path.resolve(
 );
 const DASHBOARD_FILE = path.join(DASHBOARD_DIR, "dashboard.json");
 
+/**
+ * Which directory this process is actually serving. A caller that finds a
+ * dashboard already answering on a port cannot otherwise tell whether it is
+ * serving the same state, and attaching to the wrong one is silent.
+ */
+export const dashboardDirectory = (): string => DASHBOARD_DIR;
+
 export async function readDashboard(): Promise<Dashboard> {
   try {
     return JSON.parse(await readFile(DASHBOARD_FILE, "utf8")) as Dashboard;

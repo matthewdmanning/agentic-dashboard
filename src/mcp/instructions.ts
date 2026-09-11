@@ -1,3 +1,8 @@
+// The dashboard server this MCP server belongs to reads the same PORT, so the
+// address quoted below is the one actually being served rather than a constant
+// that goes stale the first time a run moves off the default port.
+const ORIGIN = `http://localhost:${process.env.PORT ?? 5173}`;
+
 /**
  * Sent to every connecting client (see `McpServer`'s `instructions` option).
  * Written for an agent with no checkout of this repository, no shadcn Agent
@@ -5,6 +10,7 @@
  * tile and use these two tools correctly must be here or in the tool
  * descriptions, never in a document it would have to go find.
  */
+
 export const INSTRUCTIONS = `
 This server runs a dashboard: an ordered set of tile references. A tile is
 one placed thing on the dashboard — an id, a title, the registry item that
@@ -17,21 +23,21 @@ quarter-row.
 Available tiles are NOT listed by a tool here. They are discovered through
 this dashboard's own shadcn registry, served at:
 
-  http://localhost:5173/r/registry.json
+  ${ORIGIN}/r/registry.json
 
 Both commands below take that URL directly and need no project, no
 components.json, and no checkout of this repository:
 
-  npx shadcn@latest search http://localhost:5173/r/registry.json
+  npx shadcn@latest search ${ORIGIN}/r/registry.json
       Lists every available tile, one item URL per line.
 
-  npx shadcn@latest view http://localhost:5173/r/<name>.json
+  npx shadcn@latest view ${ORIGIN}/r/<name>.json
       Prints one item in full, including its "meta.schema".
 
 If you do have a project with a components.json, you may register the
 namespace once and use the shorter forms instead:
 
-  npx shadcn@latest registry add "@dashboard=http://localhost:5173/r/{name}.json"
+  npx shadcn@latest registry add "@dashboard=${ORIGIN}/r/{name}.json"
   npx shadcn@latest search @dashboard
   npx shadcn@latest view @dashboard/<name>
 

@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 
 import { createServer as createViteServer } from "vite";
 
-import { readDashboard } from "../dashboard/store";
+import { dashboardDirectory, readDashboard } from "../dashboard/store";
 
 const execAsync = promisify(exec);
 const PORT = Number(process.env.PORT) || 5173;
@@ -44,6 +44,13 @@ async function main() {
           res.setHeader("content-type", "application/json");
           res.end(JSON.stringify({ error: "dashboard-unreadable" }));
         });
+      return;
+    }
+    // Names the directory this process serves, so a second process can tell
+    // whether the server already on this port is the one it meant to reach.
+    if (req.method === "GET" && req.url === "/api/workspace") {
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ workspace: dashboardDirectory() }));
       return;
     }
     // Vite serves `public/` itself, but its SPA fallback answers a missing

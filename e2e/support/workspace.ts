@@ -44,11 +44,6 @@ export default function seedWorkspace(): () => void {
   cpSync(fixtureDir, workspace, { recursive: true });
   for (const entry of config.excludeFromWorkspace)
     rmSync(path.join(workspace, entry), { force: true });
-  for (const file of config.supportingFiles) {
-    const destination = path.join(workspace, file.target);
-    mkdirSync(path.dirname(destination), { recursive: true });
-    cpSync(path.resolve(REPO_ROOT, file.source), destination);
-  }
 
   return () => {
     try {

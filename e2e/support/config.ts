@@ -8,10 +8,6 @@ export type E2EConfig = {
   readonly fixtureDirectory: string;
   readonly workspacePrefix: string;
   readonly excludeFromWorkspace: readonly string[];
-  readonly supportingFiles: readonly {
-    readonly source: string;
-    readonly target: string;
-  }[];
   readonly server: {
     readonly host: string;
     readonly port: number;

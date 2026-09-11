@@ -27,8 +27,8 @@ export const E2E_ORIGIN = `http://${config.server.host}:${config.server.port}`;
 
 export default defineConfig({
   testDir: config.playwright.testDirectory,
-  // Seeds the run's workspace from `test-dashboard-config/` and, on the way
-  // out, proves the run never wrote back to it.
+  // Seeds the run's workspace from `dry-run/workspace/` and, on the way out,
+  // proves the run never wrote back to it.
   globalSetup: "./e2e/support/workspace.ts",
   // One worker, one server, one workspace. B3 adds and removes a registry item
   // while the server watches it, which would rewrite the registry underneath
