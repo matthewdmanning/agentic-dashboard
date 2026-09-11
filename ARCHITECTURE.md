@@ -93,6 +93,8 @@ One package, npm, no workspaces. One `components.json`, at the project root, pro
 
 `shadcn add` decides where a file lands: base components to the UI alias, everything else to the components alias. Those are separate targets in a single package, so nothing about placement is a decision a model makes.
 
+The whole base library is installed, not added component by component as a tile happens to need one. An agent writing a tile can import any shadcn component and find it already there, so which components exist is never a question it has to ask, and never an install step it could get wrong or skip. That is the same reasoning as everything else here: a decision a model does not have to make is variance it cannot introduce. The cost is a larger stylesheet, since Tailwind emits utilities for every installed component file whether a tile uses it or not; the JavaScript bundle is unaffected, because unused components are never imported.
+
 Import paths stay in shadcn's most common form. That is deliberate — a path shape models have seen everywhere is one they reproduce consistently, and consistency between models is the product.
 
 Appearance settings live in that one file and are project-level. A person's own appearance is served as a theme item instead, never written into configuration.

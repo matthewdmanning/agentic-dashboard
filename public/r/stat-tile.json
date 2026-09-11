@@ -6,7 +6,7 @@
   "files": [
     {
       "path": "src/registry/stat-tile.tsx",
-      "content": "import { Card, CardContent, CardHeader, CardTitle } from \"@/components/ui/card\"\nimport { schemas } from \"./schemas.generated\"\nimport type { JsonSchemaToType } from \"./schema\"\n\ntype StatTileProps = JsonSchemaToType<(typeof schemas)[\"stat-tile\"]>\n\nexport default function StatTile({ LABEL, VALUE }: StatTileProps) {\n  return (\n    <Card>\n      <CardHeader>\n        <CardTitle className=\"text-muted-foreground\">{LABEL}</CardTitle>\n      </CardHeader>\n      <CardContent>\n        <p className=\"text-2xl font-semibold\">{VALUE}</p>\n      </CardContent>\n    </Card>\n  )\n}\n",
+      "content": "import { Card, CardContent, CardHeader, CardTitle } from \"@/components/ui/card\";\nimport { schemas } from \"./schemas.generated\";\nimport type { JsonSchemaToType } from \"./schema\";\n\ntype StatTileProps = JsonSchemaToType<(typeof schemas)[\"stat-tile\"]>;\n\nexport default function StatTile({ LABEL, VALUE }: StatTileProps) {\n  return (\n    <Card>\n      <CardHeader>\n        <CardTitle className=\"text-muted-foreground\">{LABEL}</CardTitle>\n      </CardHeader>\n      <CardContent>\n        <p className=\"text-2xl font-semibold\">{VALUE}</p>\n      </CardContent>\n    </Card>\n  );\n}\n",
       "type": "registry:component"
     }
   ],
