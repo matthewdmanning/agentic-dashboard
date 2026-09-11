@@ -14,6 +14,7 @@ import type {
   TileReference,
 } from "@/dashboard/types";
 import type { Registry } from "./registry";
+import { ThemeToggle } from "./ThemeToggle";
 import { TileHost } from "./TileHost";
 
 type LoadState =
@@ -61,14 +62,22 @@ export function Dashboard() {
 
   return (
     <div className="flex min-h-screen flex-col bg-background text-foreground">
-      <header className={cn(PAGE_CONTAINER, "flex flex-col gap-1 py-6")}>
-        <h1 className="text-2xl font-semibold">Personal Dashboard</h1>
-        {state.status === "loading" && <Skeleton className="h-4 w-24" />}
-        {state.status === "ready" && (
-          <p className="text-sm text-muted-foreground">
-            {tileCountLabel(state.dashboard.references.length)}
-          </p>
+      <header
+        className={cn(
+          PAGE_CONTAINER,
+          "flex items-start justify-between gap-4 py-6",
         )}
+      >
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold">Personal Dashboard</h1>
+          {state.status === "loading" && <Skeleton className="h-4 w-24" />}
+          {state.status === "ready" && (
+            <p className="text-sm text-muted-foreground">
+              {tileCountLabel(state.dashboard.references.length)}
+            </p>
+          )}
+        </div>
+        <ThemeToggle />
       </header>
       <Separator />
       <main className={cn(PAGE_CONTAINER, "flex-1 py-8")}>
