@@ -2,7 +2,7 @@
   "fixtureDirectory": "dry-run/workspace",
   "workingDirectory": ".dry-run",
   "workingFolderPrefix": "workspace-",
-  "activeRunFile": "active-run.json",
+  "runFile": "run.json",
   "excludeFromWorkspace": ["README.md"],
   "commands": {
     "dashboard": "src/server/index.ts",
@@ -11,7 +11,9 @@
   "server": {
     "host": "127.0.0.1",
     "port": 5175,
+    "portAttempts": 32,
     "startupTimeout": 120000,
     "pollInterval": 250
-  }
+  },
+  "leftoverWarningThreshold": 8
 }
