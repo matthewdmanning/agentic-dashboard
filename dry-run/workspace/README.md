@@ -18,7 +18,7 @@ Those are the same files under two different rules, and the rule follows from ho
 
 Dry-run runtime settings live in `dry-run/config.json`: the fixture, the working folder, the base port the runner scans from, and the two entrypoints. E2E run settings remain separate in `e2e/config.json`.
 
-**Development edits the generated copy.** Each dry run copies this seed into its own folder under `.dry-run/`, so several runs can be up at once without meeting; a tile an agent adds persists in that run's folder and can still be read there after the run ends. Nothing under `.dry-run/` is deleted automatically.
+**Development edits the generated copy.** Each dry run copies this seed into its own folder under `.codex-tmp/dry-runs/`, so several runs can be up at once without meeting; a tile an agent adds persists in that run's folder and can still be read there after the run ends. Nothing under `.codex-tmp/dry-runs/` is deleted automatically.
 
 ## What is in here
 

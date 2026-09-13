@@ -15,7 +15,7 @@ export function storedTheme(): Theme {
     : "light";
 }
 
-/** The `.dark` class in `styles.css` is what swaps the token palette. */
+/** The `.dark` class in the global stylesheet swaps the token palette. */
 export function applyTheme(theme: Theme): void {
   document.documentElement.classList.toggle("dark", theme === "dark");
 }

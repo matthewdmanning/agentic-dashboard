@@ -26,6 +26,7 @@ installed-themes/
 Thumbs.db
 .agents
 .codex/
+.codex-tmp/
 
 # End-to-end run artifacts. `screenshots/` is kept out of Playwright's
 # `test-results/`, which Playwright wipes at the start of every run.
@@ -41,3 +42,9 @@ playwright-report/
 
 # Editor and agent-tool local configuration
 .vscode/
+
+# Playwright
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/

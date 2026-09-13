@@ -2,6 +2,9 @@ import path from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import componentsConfig from "./components.json";
+
+const globalCss = path.resolve(__dirname, componentsConfig.tailwind.css);
 
 export default defineConfig({
   plugins: [tailwindcss()],
@@ -11,6 +14,7 @@ export default defineConfig({
   test: { exclude: ["e2e/**", "node_modules/**", ".claude/**"] },
   resolve: {
     alias: {
+      "@styles": globalCss,
       "@components": path.resolve(__dirname, "./components"),
       "@/components": path.resolve(__dirname, "./components"),
       "@": path.resolve(__dirname, "./src"),

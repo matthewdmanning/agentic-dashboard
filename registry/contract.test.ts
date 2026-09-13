@@ -13,7 +13,7 @@ import { afterAll, afterEach, describe, expect, it } from "vitest";
 // The fixture root is excluded from the real project's tsconfig `include`, so it never
 // leaks into `npm run typecheck`, and every fixture dir is removed after its test.
 
-const repoRoot = path.resolve(__dirname, "../..");
+const repoRoot = path.resolve(__dirname, "..");
 const schemaModule = path.join(repoRoot, "registry/schema.ts");
 const tscBin = path.join(repoRoot, "node_modules/typescript/bin/tsc");
 const fixturesRoot = path.join(repoRoot, ".contract-fixtures-tmp");

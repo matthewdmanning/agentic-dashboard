@@ -150,7 +150,7 @@ Sources: shadcn doc pages fetched directly, plus the packaged `shadcn` skill, wh
 
 ## Open items — none
 
-**N2 — global-CSS mis-detection. CONFIRMED, 2026-09-10.** `shadcn info` reports `project.tailwindCss: globals-example.css` while `resolvedPaths.tailwindCss` is `C:\GitHub\agentic-dashboard\src\styles.css` — two different files. The 4,224-byte `globals-example.css` at the repo root was being detected as the project's global stylesheet, so `apply --only theme` would have written to the wrong file. **Deleted 2026-09-10.**
+**N2 — global-CSS mis-detection. CONFIRMED, 2026-09-10.** `shadcn info` reports `project.tailwindCss: globals-example.css` while `resolvedPaths.tailwindCss` is `C:\GitHub\agentic-dashboard\src\index.css` — two different files. The 4,224-byte `globals-example.css` at the repo root was being detected as the project's global stylesheet, so `apply --only theme` would have written to the wrong file. **Deleted 2026-09-10.**
 
 **Action for Phase 2: no `globals-example.css` at the repo root.** If an example stylesheet is wanted, it goes in `docs/` under a name the CLI will not mistake for the real one.
 

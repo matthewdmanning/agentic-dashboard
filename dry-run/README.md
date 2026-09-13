@@ -47,11 +47,12 @@ has nobody to answer a prompt.
 
 ## Workspaces
 
-`npm run dry-run` copies `workspace/` into a new folder under `.dry-run/` and
+`npm run dry-run` copies `workspace/` into a new folder under
+`.codex-tmp/dry-runs/` and
 writes a `run.json` beside the dashboard state naming the port it is serving
 on. When the server stops, that record goes and the folder stays.
 
-Nothing under `.dry-run/` is ever deleted automatically. A folder from a
+Nothing under `.codex-tmp/dry-runs/` is ever deleted automatically. A folder from a
 finished or crashed run holds that run's dashboard, and another run may still
 be using it, so old folders are yours to delete; the runner only warns once
 they pile up. A `run.json` pointing at a port nobody answers is ignored rather
@@ -63,7 +64,7 @@ and how far to scan from it, and the two entrypoints.
 ## What the dry run does not carry
 
 The registry (`registry.json`, `src/registry/`), the shadcn project config
-(`components.json`), and the theme (`src/styles.css`) are the application, not
+(`components.json`), and the theme (`src/index.css`) are the application, not
 the run, and are read from the repository root. A working folder holds only
 the dashboard's own state. Editing a copy of one of those files inside a
 working folder would change nothing.

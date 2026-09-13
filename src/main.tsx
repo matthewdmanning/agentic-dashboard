@@ -1,5 +1,5 @@
 import { createRoot } from "react-dom/client";
-import "./styles.css";
+import "@styles";
 import { Dashboard } from "./client/Dashboard";
 import { applyTheme, storedTheme } from "./client/theme";
 
