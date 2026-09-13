@@ -5,12 +5,13 @@
   "items": [
     {
       "name": "stat-tile",
-      "type": "registry:component",
+      "type": "registry:block",
       "title": "Stat Tile",
       "description": "Displays a labeled numeric value.",
+      "registryDependencies": ["card"],
       "files": [
         {
-          "path": "src/registry/stat-tile.tsx",
+          "path": "registry/stat-tile.tsx",
           "type": "registry:component"
         }
       ],
@@ -34,12 +35,13 @@
     },
     {
       "name": "list-tile",
-      "type": "registry:component",
+      "type": "registry:block",
       "title": "List Tile",
       "description": "Displays a titled list of items.",
+      "registryDependencies": ["card"],
       "files": [
         {
-          "path": "src/registry/list-tile.tsx",
+          "path": "registry/list-tile.tsx",
           "type": "registry:component"
         }
       ],
@@ -59,6 +61,98 @@
             }
           },
           "required": ["LIST_TITLE", "LIST_ITEMS"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "name": "checklist-tile",
+      "type": "registry:block",
+      "title": "Checklist Tile",
+      "description": "Displays a titled list of toggleable checklist items.",
+      "registryDependencies": ["card", "checkbox", "field"],
+      "files": [
+        {
+          "path": "registry/checklist-tile.tsx",
+          "type": "registry:component"
+        }
+      ],
+      "meta": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "CHECKLIST_TITLE": {
+              "type": "string",
+              "default": ""
+            },
+            "CHECKLIST_ITEMS": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "LABEL": {
+                    "type": "string",
+                    "default": ""
+                  },
+                  "CHECKED": {
+                    "type": "boolean",
+                    "default": false
+                  }
+                },
+                "required": ["LABEL", "CHECKED"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["CHECKLIST_TITLE", "CHECKLIST_ITEMS"],
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "name": "eisenhower-matrix-tile",
+      "type": "registry:block",
+      "title": "Eisenhower Matrix Tile",
+      "description": "Displays tasks across the four Eisenhower matrix quadrants.",
+      "registryDependencies": ["card"],
+      "files": [
+        {
+          "path": "registry/eisenhower-matrix-tile.tsx",
+          "type": "registry:component"
+        }
+      ],
+      "meta": {
+        "schema": {
+          "type": "object",
+          "properties": {
+            "MATRIX_TITLE": {
+              "type": "string",
+              "default": ""
+            },
+            "MATRIX_ITEMS": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "task": {
+                    "type": "string",
+                    "default": ""
+                  },
+                  "urgency": {
+                    "type": "string",
+                    "enum": ["High", "Low"]
+                  },
+                  "importance": {
+                    "type": "string",
+                    "enum": ["High", "Low"]
+                  }
+                },
+                "required": ["task", "urgency", "importance"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["MATRIX_TITLE", "MATRIX_ITEMS"],
           "additionalProperties": false
         }
       }

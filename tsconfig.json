@@ -8,11 +8,13 @@
     "jsx": "react-jsx",
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@components/*": ["./components/*"],
+      "@/components/*": ["./components/*"]
     },
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tests", "e2e", "playwright.config.ts"]
+  "include": ["src", "registry", "tests", "e2e", "playwright.config.ts"]
 }

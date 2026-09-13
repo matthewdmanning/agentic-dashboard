@@ -11,6 +11,8 @@ export default defineConfig({
   test: { exclude: ["e2e/**", "node_modules/**", ".claude/**"] },
   resolve: {
     alias: {
+      "@components": path.resolve(__dirname, "./components"),
+      "@/components": path.resolve(__dirname, "./components"),
       "@": path.resolve(__dirname, "./src"),
     },
   },

@@ -48,13 +48,16 @@
     {
       "id": "reading-queue",
       "title": "Reading queue",
-      "item": "list-tile",
+      "item": "checklist-tile",
       "state": {
-        "LIST_TITLE": "Reading queue",
-        "LIST_ITEMS": [
-          "Operations notes — chapter 4",
-          "Product brief — accessibility section",
-          "Research summary — final pass"
+        "CHECKLIST_TITLE": "Reading queue",
+        "CHECKLIST_ITEMS": [
+          { "LABEL": "Operations notes — chapter 4", "CHECKED": false },
+          {
+            "LABEL": "Product brief — accessibility section",
+            "CHECKED": false
+          },
+          { "LABEL": "Research summary — final pass", "CHECKED": false }
         ]
       }
     },

@@ -12,7 +12,7 @@ const execAsync = promisify(exec);
 const PORT = Number(process.env.PORT) || 5173;
 const ROOT = path.resolve(import.meta.dirname, "../..");
 const REGISTRY_JSON = path.join(ROOT, "registry.json");
-const REGISTRY_SRC = path.join(ROOT, "src/registry");
+const REGISTRY_SRC = path.join(ROOT, "registry");
 const BUILT_REGISTRY = path.join(ROOT, "public/r/registry.json");
 
 async function buildRegistry(): Promise<void> {

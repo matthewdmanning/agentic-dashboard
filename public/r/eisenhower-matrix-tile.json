@@ -1,0 +1,50 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "eisenhower-matrix-tile",
+  "title": "Eisenhower Matrix Tile",
+  "description": "Displays tasks across the four Eisenhower matrix quadrants.",
+  "registryDependencies": ["card"],
+  "files": [
+    {
+      "path": "registry/eisenhower-matrix-tile.tsx",
+      "content": "import {\n  Card,\n  CardContent,\n  CardHeader,\n  CardTitle,\n} from \"@/components/ui/card\";\nimport { schemas } from \"./schemas.generated\";\nimport type { JsonSchemaToType } from \"./schema\";\n\ntype EisenhowerMatrixTileProps = JsonSchemaToType<\n  (typeof schemas)[\"eisenhower-matrix-tile\"]\n>;\n\nconst QUADRANTS = [\n  {\n    key: \"DO_FIRST\",\n    title: \"Do first\",\n    description: \"Urgent and important\",\n  },\n  {\n    key: \"SCHEDULE\",\n    title: \"Schedule\",\n    description: \"Important, not urgent\",\n  },\n  {\n    key: \"DELEGATE\",\n    title: \"Delegate\",\n    description: \"Urgent, not important\",\n  },\n  {\n    key: \"ELIMINATE\",\n    title: \"Eliminate\",\n    description: \"Neither urgent nor important\",\n  },\n] as const;\n\n// Use this function to display tasks across the four standard Eisenhower matrix quadrants.\nexport default function EisenhowerMatrixTile({\n  MATRIX_TITLE,\n  MATRIX_ITEMS,\n}: EisenhowerMatrixTileProps) {\n  const items = {\n    DO_FIRST: MATRIX_ITEMS.filter(\n      ({ urgency, importance }) =>\n        urgency === \"High\" && importance === \"High\",\n    ),\n    SCHEDULE: MATRIX_ITEMS.filter(\n      ({ urgency, importance }) =>\n        urgency === \"Low\" && importance === \"High\",\n    ),\n    DELEGATE: MATRIX_ITEMS.filter(\n      ({ urgency, importance }) =>\n        urgency === \"High\" && importance === \"Low\",\n    ),\n    ELIMINATE: MATRIX_ITEMS.filter(\n      ({ urgency, importance }) => urgency === \"Low\" && importance === \"Low\",\n    ),\n  };\n\n  return (\n    <Card>\n      <CardHeader>\n        <CardTitle>{MATRIX_TITLE}</CardTitle>\n      </CardHeader>\n      <CardContent>\n        <div className=\"grid gap-4 sm:grid-cols-2\">\n          {QUADRANTS.map((quadrant) => (\n            <section\n              key={quadrant.key}\n              className=\"rounded-lg border bg-muted/20 p-4\"\n            >\n              <h3 className=\"text-sm font-medium\">{quadrant.title}</h3>\n              <p className=\"text-sm text-muted-foreground\">\n                {quadrant.description}\n              </p>\n              {items[quadrant.key].length > 0 ? (\n                <ul className=\"mt-3 flex flex-col gap-2 text-sm\">\n                  {items[quadrant.key].map((item, index) => (\n                    <li key={`${quadrant.key}-${index}`}>{item.task}</li>\n                  ))}\n                </ul>\n              ) : (\n                <p className=\"mt-3 text-sm text-muted-foreground\">\n                  No items\n                </p>\n              )}\n            </section>\n          ))}\n        </div>\n      </CardContent>\n    </Card>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "meta": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "MATRIX_TITLE": {
+          "type": "string",
+          "default": ""
+        },
+        "MATRIX_ITEMS": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "task": {
+                "type": "string",
+                "default": ""
+              },
+              "urgency": {
+                "type": "string",
+                "enum": ["High", "Low"]
+              },
+              "importance": {
+                "type": "string",
+                "enum": ["High", "Low"]
+              }
+            },
+            "required": ["task", "urgency", "importance"],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": ["MATRIX_TITLE", "MATRIX_ITEMS"],
+      "additionalProperties": false
+    }
+  },
+  "type": "registry:block"
+}
