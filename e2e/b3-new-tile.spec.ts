@@ -22,30 +22,33 @@ import {
  * through a lazy `import.meta.glob("/src/registry/*.tsx")` instead — this
  * test is what stops anyone reintroducing a hand-maintained map.
  *
- * This is the only B3/B4-family check that mutates shared repo state
- * (`registry.json`, `src/registry/*.tsx`, `public/r/*.json`) rather than only
- * the dashboard's own workspace file, so it must run alone, never alongside
- * sibling acceptance checks that also touch the registry.
+ * This is the only B3/B4-family check that mutates the workspace's registry
+ * (`registry.json`, `registry/*.tsx`, `public/r/*.json`, all under
+ * `DASHBOARD_WORKSPACE`) rather than only the dashboard's tile state, so it
+ * must run alone, never alongside sibling acceptance checks that also touch
+ * the registry.
  */
 
 const execAsync = promisify(exec);
 
+// WORKSPACE is already absolute (mkdtempSync's return value in
+// playwright.config.ts), so paths under it are joined directly — never
+// re-prefixed with a repo root.
 const WORKSPACE = E2E_WORKSPACE;
 const PORT = E2E_PORT;
 const REGISTRY_URL = `${E2E_ORIGIN}/r/registry.json`;
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
-const REGISTRY_JSON_PATH = path.join(REPO_ROOT, "registry.json");
+const REGISTRY_JSON_PATH = path.join(WORKSPACE, "registry.json");
 
 const FIXTURE_NAME = "b3-fixture-tile";
 const FIXTURE_MESSAGE = "b3 fixture rendered live, no rebuild";
 const FIXTURE_COMPONENT_PATH = path.join(
-  REPO_ROOT,
-  "src/registry",
+  WORKSPACE,
+  "registry",
   `${FIXTURE_NAME}.tsx`,
 );
 const FIXTURE_BUILT_PATH = path.join(
-  REPO_ROOT,
+  WORKSPACE,
   "public/r",
   `${FIXTURE_NAME}.json`,
 );
@@ -76,9 +79,7 @@ const FIXTURE_REGISTRY_ITEM = {
   title: "B3 Fixture Tile",
   description:
     "Test-only fixture for the B3 acceptance check. Never shipped; removed by the test's own cleanup.",
-  files: [
-    { path: `src/registry/${FIXTURE_NAME}.tsx`, type: "registry:component" },
-  ],
+  files: [{ path: `registry/${FIXTURE_NAME}.tsx`, type: "registry:component" }],
   meta: {
     schema: {
       type: "object",
@@ -314,5 +315,5 @@ async function removeFixture(): Promise<void> {
     writeFileSync(REGISTRY_JSON_PATH, originalRegistryJson, "utf8");
   await waitForRegistryItem(false, E2E_CONFIG.tests.registryWaitTimeout);
   rmSync(FIXTURE_BUILT_PATH, { force: true });
-  rmSync(path.join(REPO_ROOT, WORKSPACE, "dashboard.json"), { force: true });
+  rmSync(path.join(WORKSPACE, "dashboard.json"), { force: true });
 }
