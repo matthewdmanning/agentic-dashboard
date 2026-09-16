@@ -82,7 +82,13 @@ async function main() {
   watch(WORKSPACE, (_event, filename) => {
     if (filename === "registry.json") scheduleRebuild();
   });
-  watch(REGISTRY_SRC, { recursive: true }, (_event, filename) => {
+  // Not `{ recursive: true }`: registry/ is flat (no subdirectories), and
+  // Windows' recursive fs.watch can enter a self-triggering event storm (the
+  // watched directory reports itself as repeatedly "changed", faster than
+  // the debounce below ever gets a quiet window to fire) — a known libuv
+  // limitation on Windows. A plain, non-recursive watch has no such issue
+  // and covers everything this directory actually needs watched.
+  watch(REGISTRY_SRC, (_event, filename) => {
     if (filename?.endsWith(".tsx")) scheduleRebuild();
   });
 
