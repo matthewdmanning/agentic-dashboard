@@ -26,6 +26,77 @@ export function dashboardOrigin(): string {
   ).replace(/\/$/, "");
 }
 
+function assertInsideWorkspace(
+  workspace: string,
+  relativePath: string,
+  what: string,
+): void {
+  const resolved = path.resolve(workspace, relativePath);
+  const boundary = workspace.endsWith(path.sep)
+    ? workspace
+    : `${workspace}${path.sep}`;
+  if (resolved !== workspace && !resolved.startsWith(boundary)) {
+    throw new Error(
+      `${what} "${relativePath}" resolves outside the workspace (${workspace})`,
+    );
+  }
+}
+
+/**
+ * Rejects a `components.json` or `registry.json` that points outside the
+ * workspace. OS filesystem permissions are the real enforcement boundary
+ * (agents never get write access to the app installation); this catches a
+ * misconfigured or malicious registry item before anything reads or writes
+ * through it.
+ */
+export function validateWorkspaceConfig(workspace: string): void {
+  const componentsPath = path.join(workspace, "components.json");
+  if (existsSync(componentsPath)) {
+    const components = JSON.parse(readFileSync(componentsPath, "utf8")) as {
+      tailwind?: { css?: string };
+      aliases?: Record<string, string>;
+    };
+    if (components.tailwind?.css) {
+      assertInsideWorkspace(
+        workspace,
+        components.tailwind.css,
+        "components.json tailwind.css",
+      );
+    }
+    for (const [name, alias] of Object.entries(components.aliases ?? {})) {
+      // Aliases are "@/..." import specifiers resolved against baseUrl via
+      // tsconfig.json's "@/*": ["./*"] mapping — the filesystem path is
+      // whatever follows the "@/" prefix (or the whole value, for an alias
+      // that was never namespaced that way in the first place).
+      const relative = alias.replace(/^@\//, "");
+      assertInsideWorkspace(
+        workspace,
+        relative,
+        `components.json aliases.${name}`,
+      );
+    }
+  }
+
+  const registryPath = path.join(workspace, "registry.json");
+  if (existsSync(registryPath)) {
+    const registry = JSON.parse(readFileSync(registryPath, "utf8")) as {
+      items?: readonly {
+        name: string;
+        files?: readonly { path: string }[];
+      }[];
+    };
+    for (const item of registry.items ?? []) {
+      for (const file of item.files ?? []) {
+        assertInsideWorkspace(
+          workspace,
+          file.path,
+          `registry item "${item.name}" file`,
+        );
+      }
+    }
+  }
+}
+
 /** Copy starter assets only when absent; existing workspace work is never reset. */
 export function seedWorkspace(): string {
   const workspace = workspaceDirectory();
@@ -110,5 +181,6 @@ export function seedWorkspace(): string {
     );
   }
 
+  validateWorkspaceConfig(workspace);
   return workspace;
 }
