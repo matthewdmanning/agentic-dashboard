@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { cpSync, mkdirSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { readdirSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { loadE2EConfig } from "./config";
@@ -28,7 +28,13 @@ const hashFixture = (fixtureDir: string): string => {
   return digest.digest("hex");
 };
 
-/** Returns its own teardown, so the before-hash stays in scope rather than crossing a module boundary. */
+/**
+ * Returns its own teardown, so the before-hash stays in scope rather than
+ * crossing a module boundary. The workspace itself is already seeded by
+ * `playwright.config.ts` by the time this runs — Playwright starts
+ * `webServer` before `globalSetup`, so seeding here would race the
+ * already-running server's own build of that same directory.
+ */
 export default function seedWorkspace(): () => void {
   const config = loadE2EConfig();
   const fixtureDir = path.resolve(REPO_ROOT, config.fixtureDirectory);
@@ -39,11 +45,6 @@ export default function seedWorkspace(): () => void {
     );
 
   const before = hashFixture(fixtureDir);
-  rmSync(workspace, { recursive: true, force: true });
-  mkdirSync(workspace, { recursive: true });
-  cpSync(fixtureDir, workspace, { recursive: true });
-  for (const entry of config.excludeFromWorkspace)
-    rmSync(path.join(workspace, entry), { force: true });
 
   return () => {
     try {

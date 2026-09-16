@@ -1,5 +1,5 @@
 import { defineConfig } from "@playwright/test";
-import { mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { loadE2EConfig } from "./e2e/support/config";
@@ -30,6 +30,19 @@ if (!workspace) {
 }
 process.env.E2E_RUN_WORKSPACE = workspace;
 
+// Playwright starts `webServer` before running `globalSetup` (never the
+// reverse), so seeding the workspace from globalSetup let the server boot,
+// build its own registry into this directory, and then have globalSetup's
+// wipe-and-recopy delete that output out from under it — the very first
+// request in a test could 404 on /r/registry.json. Seeding here instead runs
+// before webServer's command is even spawned, so the server only ever sees a
+// workspace that's already in its final starting state.
+const fixtureDir = path.resolve(REPO_ROOT, config.fixtureDirectory);
+rmSync(workspace, { recursive: true, force: true });
+cpSync(fixtureDir, workspace, { recursive: true });
+for (const entry of config.excludeFromWorkspace)
+  rmSync(path.join(workspace, entry), { force: true });
+
 /**
  * Browser checks, kept out of the pull-request lane: they boot a real server
  * and a real browser, which is the expensive half of CI. `.github/workflows`
@@ -46,8 +59,8 @@ export const E2E_ORIGIN = `http://${config.server.host}:${config.server.port}`;
 
 export default defineConfig({
   testDir: config.playwright.testDirectory,
-  // Seeds the run's workspace from `dry-run/workspace/` and, on the way out,
-  // proves the run never wrote back to it.
+  // On the way out, proves the run never wrote back to the `dry-run/workspace/`
+  // fixture this config already copied into the run's workspace above.
   globalSetup: "./e2e/support/workspace.ts",
   // One worker, one server, one workspace. B3 adds and removes a registry item
   // while the server watches it, which would rewrite the registry underneath

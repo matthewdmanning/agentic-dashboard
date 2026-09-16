@@ -248,13 +248,28 @@ async function resetDashboard(client: McpTestClient): Promise<void> {
   });
 }
 
+/**
+ * The dev server can legitimately 404 `/r/registry.json` for a moment: a
+ * rebuild (this test's own, or one the server triggers itself off a
+ * filesystem event) shells out to shadcn's CLI, which writes registry.json
+ * by renaming it into place rather than overwriting it in place — so the
+ * file briefly doesn't exist while a rebuild is in flight. That's expected,
+ * not absence, so retry through it rather than failing on it.
+ */
 async function fetchRegistry(): Promise<{
   items: readonly { name: string }[];
 }> {
-  const response = await fetch(REGISTRY_URL);
-  if (!response.ok)
-    throw new Error(`GET ${REGISTRY_URL} failed: ${response.status}`);
-  return (await response.json()) as { items: readonly { name: string }[] };
+  const deadline = Date.now() + E2E_CONFIG.tests.registryWaitTimeout;
+  for (;;) {
+    const response = await fetch(REGISTRY_URL);
+    if (response.ok)
+      return (await response.json()) as { items: readonly { name: string }[] };
+    if (Date.now() > deadline)
+      throw new Error(`GET ${REGISTRY_URL} failed: ${response.status}`);
+    await new Promise((resolve) =>
+      setTimeout(resolve, E2E_CONFIG.tests.registryPollInterval),
+    );
+  }
 }
 
 /** Polls the served registry for the fixture's presence/absence. Never a fixed sleep — the rebuild's duration varies. */
