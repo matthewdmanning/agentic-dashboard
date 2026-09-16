@@ -7,26 +7,24 @@ import { promisify } from "node:util";
 import { createServer as createViteServer } from "vite";
 
 import { dashboardDirectory, readDashboard } from "../dashboard/store";
+import { APP_ROOT, seedWorkspace } from "../workspace";
 
 const execAsync = promisify(exec);
 const PORT = Number(process.env.PORT) || 5173;
-const ROOT = path.resolve(import.meta.dirname, "../..");
-const REGISTRY_JSON = path.join(ROOT, "registry.json");
-const REGISTRY_SRC = path.join(ROOT, "registry");
-const BUILT_REGISTRY = path.join(ROOT, "public/r/registry.json");
+const WORKSPACE = seedWorkspace();
+const REGISTRY_JSON = path.join(WORKSPACE, "registry.json");
+const REGISTRY_SRC = path.join(WORKSPACE, "registry");
+const BUILT_REGISTRY = path.join(WORKSPACE, "public/r/registry.json");
 
 async function buildRegistry(): Promise<void> {
-  await execAsync("npm run registry:build", { cwd: ROOT });
+  await execAsync("npm run registry:build", { cwd: APP_ROOT });
 }
 
 async function main() {
-  if (!existsSync(BUILT_REGISTRY)) {
-    console.log(`${BUILT_REGISTRY} missing, building registry before startup`);
-    await buildRegistry();
-  }
+  await buildRegistry();
 
   const vite = await createViteServer({
-    root: ROOT,
+    root: APP_ROOT,
     server: { middlewareMode: true },
     appType: "spa",
   });
@@ -58,7 +56,7 @@ async function main() {
     // through the shadcn CLI would then parse HTML as a registry item.
     if (
       req.url?.startsWith("/r/") &&
-      !existsSync(path.join(ROOT, "public", req.url.split("?")[0]))
+      !existsSync(path.join(WORKSPACE, "public", req.url.split("?")[0]))
     ) {
       res.statusCode = 404;
       res.setHeader("content-type", "application/json");

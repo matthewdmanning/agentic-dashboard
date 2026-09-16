@@ -30,12 +30,12 @@ export const tileSchema = z.object({
   item: z
     .string()
     .describe(
-      "Name of the registry item that renders this tile (the name shown by `shadcn search @dashboard`, without the `@dashboard/` prefix).",
+      "Name of the dashboard registry item that renders this tile (as shown by shadcn search against the dashboard registry URL).",
     ),
   state: z
     .record(z.string(), z.unknown())
     .describe(
-      "Data the tile's registry item renders. Must include every key in that item's `meta.schema.required` (read via `shadcn view @dashboard/<item>`).",
+      "Data the tile's registry item renders. Read meta.schema with shadcn view against the item's dashboard registry URL before supplying required keys.",
     ),
 });
 

@@ -1,6 +1,8 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { workspaceDirectory } from "../workspace";
+
 import {
   EMPTY_DASHBOARD,
   MutationError,
@@ -12,10 +14,7 @@ import {
 } from "./types";
 
 /** Browser checks point this at a throwaway directory so a run never touches real dashboard data. */
-const DASHBOARD_DIR = path.resolve(
-  process.cwd(),
-  process.env.DASHBOARD_WORKSPACE ?? ".dashboard",
-);
+const DASHBOARD_DIR = workspaceDirectory();
 const DASHBOARD_FILE = path.join(DASHBOARD_DIR, "dashboard.json");
 
 /**

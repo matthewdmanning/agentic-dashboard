@@ -14,7 +14,7 @@ import type { RegistryItem } from "./registry";
 
 // Lazy glob, not a hand-written map: a tile added on disk while the server
 // runs must resolve here after a reload with no client rebuild (B3).
-const registryModules = import.meta.glob("/registry/*.tsx");
+const registryModules = import.meta.glob("@workspace/registry/*.tsx");
 
 // One lazy component per item name, reused across renders so a re-render of
 // the dashboard doesn't re-trigger the dynamic import.
@@ -26,7 +26,7 @@ const lazyComponents = new Map<
 function resolveComponent(
   itemName: string,
 ): ComponentType<Record<string, unknown>> | null {
-  const modulePath = `/registry/${itemName}.tsx`;
+  const modulePath = `@workspace/registry/${itemName}.tsx`;
   const loadModule = registryModules[modulePath];
   if (!loadModule) return null;
 

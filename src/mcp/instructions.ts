@@ -1,59 +1,38 @@
-// The dashboard server this MCP server belongs to reads the same PORT, so the
-// address quoted below is the one actually being served rather than a constant
-// that goes stale the first time a run moves off the default port.
-const ORIGIN = `http://localhost:${process.env.PORT ?? 5173}`;
+import { dashboardOrigin, workspaceDirectory } from "../workspace";
 
-/**
- * Sent to every connecting client (see `McpServer`'s `instructions` option).
- * Written for an agent with no checkout of this repository, no shadcn Agent
- * Skill, and no prior context — everything it needs to name every available
- * tile and use these two tools correctly must be here or in the tool
- * descriptions, never in a document it would have to go find.
- */
+const ORIGIN = dashboardOrigin();
+const WORKSPACE = workspaceDirectory();
 
+/** Sent on every MCP connection, including clients with no dashboard checkout. */
 export const INSTRUCTIONS = `
-This server runs a dashboard: an ordered set of tile references. A tile is
-one placed thing on the dashboard — an id, a title, the registry item that
-renders it, and its state (the data that item displays). Placement — a
-tile's position and size — belongs to the dashboard, not the tile. Size is
-"sm", "md", or "lg": the grid is four columns wide, so two "md" tiles side
-by side fill one row, one "lg" tile fills a row alone, and "sm" is a
-quarter-row.
+This dashboard is an ordered set of tile references. A tile names a registry
+item, carries state matching that item's meta.schema, and is placed at size
+"sm", "md", or "lg". Two "md" tiles fill one row; one "lg" fills a row.
 
-Available tiles are NOT listed by a tool here. They are discovered through
-this dashboard's own shadcn registry, served at:
-
-  ${ORIGIN}/r/registry.json
-
-Both commands below take that URL directly and need no project, no
-components.json, and no checkout of this repository:
-
+The dashboard registry is at ${ORIGIN}/r/registry.json. Discover existing
+tile items and their required state keys on demand:
   npx shadcn@latest search ${ORIGIN}/r/registry.json
-      Lists every available tile, one item URL per line.
-
   npx shadcn@latest view ${ORIGIN}/r/<name>.json
-      Prints one item in full, including its "meta.schema".
+Read meta.schema.required and meta.schema.properties before supplying state.
 
-If you do have a project with a components.json, you may register the
-namespace once and use the shorter forms instead:
+For component discovery and authoring, use the public shadcn Agent Skill at
+https://skills.sh/shadcn/ui/shadcn and the shadcn MCP server documented at
+https://ui.shadcn.com/docs/mcp. Run shadcn MCP with its working directory set
+to the writable dashboard workspace so it reads that workspace's
+components.json. Search all configured shadcn-compatible registries, including
+the default shadcn registry; component descriptions are retrieved when needed.
 
-  npx shadcn@latest registry add "@dashboard=${ORIGIN}/r/{name}.json"
-  npx shadcn@latest search @dashboard
-  npx shadcn@latest view @dashboard/<name>
+Use an existing tile item if it fits. If you have source-authoring permission
+and access to the writable workspace at ${WORKSPACE}, you may add a new item:
+preview the chosen component with shadcn add --dry-run, reject any installation
+target outside that workspace, install there, write registry/<name>.tsx and
+its registry.json entry with meta.schema, run the installed app's typecheck and
+registry:build commands with DASHBOARD_WORKSPACE set to that absolute path,
+then place the tile through apply. Never write to the installed app or src/.
+If you have only dashboard-state permission, choose an existing tile item and
+use the two dashboard tools below; do not attempt source installation.
 
-Without a components.json, "registry add" fails — use the URL forms above.
-
-Each registry item carries a JSON Schema at "meta.schema". That schema is
-where a tile's required state keys come from: read "meta.schema.required"
-(and "meta.schema.properties" for each key's type) to know what state a
-tile of that item needs before adding it.
-
-Two tools, nothing else:
-
-  read-dashboard  Read the dashboard's current tiles and references.
-  apply           Apply one or more mutations atomically and persist them.
-
-Every change to the dashboard — adding, removing, or retitling a tile,
-changing its state, or repositioning/resizing it — goes through "apply".
-There is no other way to change anything.
+read-dashboard reads the current tiles and placements. apply atomically
+changes dashboard state: add or remove a tile, set state or title, and place
+or resize it. Source files and component installation are outside apply.
 `.trim();
