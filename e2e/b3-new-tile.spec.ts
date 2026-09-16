@@ -53,42 +53,19 @@ const FIXTURE_BUILT_PATH = path.join(
   `${FIXTURE_NAME}.json`,
 );
 
-const FIXTURE_COMPONENT_SOURCE = `import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { schemas } from "./schemas.generated"
-import type { JsonSchemaToType } from "./schema"
-
-type B3FixtureTileProps = JsonSchemaToType<(typeof schemas)["${FIXTURE_NAME}"]>
-
-export default function B3FixtureTile({ MESSAGE }: B3FixtureTileProps) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>B3 Fixture</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p>{MESSAGE}</p>
-      </CardContent>
-    </Card>
-  )
-}
-`;
-
-const FIXTURE_REGISTRY_ITEM = {
-  name: FIXTURE_NAME,
-  type: "registry:component",
-  title: "B3 Fixture Tile",
-  description:
-    "Test-only fixture for the B3 acceptance check. Never shipped; removed by the test's own cleanup.",
-  files: [{ path: `registry/${FIXTURE_NAME}.tsx`, type: "registry:component" }],
-  meta: {
-    schema: {
-      type: "object",
-      properties: { MESSAGE: { type: "string", default: "" } },
-      required: ["MESSAGE"],
-      additionalProperties: false,
-    },
-  },
-};
+// Predefined, checked-in fixture assets, not template literals: the same
+// component source and registry item every run, reviewable on their own.
+const FIXTURE_ASSETS_DIR = path.join(
+  import.meta.dirname,
+  "fixtures/b3-fixture-tile",
+);
+const FIXTURE_COMPONENT_SOURCE = readFileSync(
+  path.join(FIXTURE_ASSETS_DIR, "component.tsx"),
+  "utf8",
+);
+const FIXTURE_REGISTRY_ITEM = JSON.parse(
+  readFileSync(path.join(FIXTURE_ASSETS_DIR, "registry-item.json"), "utf8"),
+) as Record<string, unknown>;
 
 // Exact bytes of registry.json as found, restored verbatim at cleanup —
 // module scope so both the test body and the afterAll cleanup helper share
@@ -100,6 +77,10 @@ test.describe("B3 — new tiles render", () => {
   test.describe.configure({ mode: "serial" }); // shared workspace + shared registry.json — no concurrent mutation
 
   let client: McpTestClient;
+  // Captured by the first test, read by the second — same-process identity
+  // is a separate claim from "the new tile renders" and must fail on its
+  // own, distinctly from a registry-rebuild-race failure in the first test.
+  let pidBeforeChange: string;
 
   test.beforeAll(async () => {
     client = await connectMcpClient(WORKSPACE);
@@ -115,7 +96,7 @@ test.describe("B3 — new tiles render", () => {
     await resetDashboard(client);
   });
 
-  test("a tile added while the server runs renders after reload, served by the same process throughout", async ({
+  test("a tile added while the server runs renders after reload, with no client rebuild and no restart", async ({
     page,
   }) => {
     test.setTimeout(E2E_CONFIG.tests.newTileTimeout);
@@ -133,9 +114,10 @@ test.describe("B3 — new tiles render", () => {
     await expect(page.getByText(FIXTURE_MESSAGE)).toHaveCount(0);
 
     // Process-identifying signal, captured before any change: the OS-level
-    // PID bound to the dev server's listening socket. Compared against the
-    // same reading taken after the reload below.
-    const pidBeforeChange = await listeningPid(PORT);
+    // PID bound to the dev server's listening socket. Read by the next test,
+    // after the change, to check server identity independently of whether
+    // this test's own rendering assertions pass.
+    pidBeforeChange = await listeningPid(PORT);
 
     // 2. Add the tile while the server keeps running: write the component
     // file and its registry item directly to disk, the way a human editing
@@ -175,16 +157,21 @@ test.describe("B3 — new tiles render", () => {
     await page.reload();
     await expect(page.getByText(FIXTURE_MESSAGE)).toBeVisible();
 
+    await page.screenshot({
+      path: "screenshots/b3-new-tile-renders-after-reload.png",
+    });
+  });
+
+  // Split from the test above so a registry-rebuild-race failure there (the
+  // slow, external-CLI-dependent half) is never conflated with this one: a
+  // fast, purely OS-level check that the process itself never restarted.
+  test("the same server process serves the dashboard before and after the tile is added", async () => {
     const pidAfterChange = await listeningPid(PORT);
     expect(
       pidAfterChange,
       "the OS-level PID bound to the dev server's port must be identical before and after — " +
         "the only evidence available from outside the process that the same one served both loads",
     ).toBe(pidBeforeChange);
-
-    await page.screenshot({
-      path: "screenshots/b3-new-tile-renders-after-reload.png",
-    });
   });
 
   test("a tile whose state violates its schema is refused, not rendered — and the rest of the dashboard still renders", async ({
