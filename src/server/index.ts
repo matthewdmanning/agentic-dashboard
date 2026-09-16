@@ -12,7 +12,6 @@ import { APP_ROOT, seedWorkspace } from "../workspace";
 const execAsync = promisify(exec);
 const PORT = Number(process.env.PORT) || 5173;
 const WORKSPACE = seedWorkspace();
-const REGISTRY_JSON = path.join(WORKSPACE, "registry.json");
 const REGISTRY_SRC = path.join(WORKSPACE, "registry");
 const BUILT_REGISTRY = path.join(WORKSPACE, "public/r/registry.json");
 
@@ -78,7 +77,11 @@ async function main() {
     }, 200);
   };
 
-  watch(REGISTRY_JSON, scheduleRebuild);
+  // Watches the containing directory rather than the file itself: fs.watch on
+  // a single file throws EPERM on Windows.
+  watch(WORKSPACE, (_event, filename) => {
+    if (filename === "registry.json") scheduleRebuild();
+  });
   watch(REGISTRY_SRC, { recursive: true }, (_event, filename) => {
     if (filename?.endsWith(".tsx")) scheduleRebuild();
   });

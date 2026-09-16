@@ -1,14 +1,33 @@
 import { defineConfig } from "@playwright/test";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { loadE2EConfig } from "./e2e/support/config";
 
 const config = loadE2EConfig();
 const REPO_ROOT = path.resolve(import.meta.dirname);
-const workspace =
-  process.env.E2E_RUN_WORKSPACE ??
-  mkdtempSync(path.join(REPO_ROOT, config.workspacePrefix));
+
+/**
+ * Deletes throwaway workspaces left by a run that never reached its own
+ * teardown — a crashed webServer, a killed process. Only runs when this
+ * invocation is about to make its own workspace; a pinned E2E_RUN_WORKSPACE
+ * is left alone.
+ */
+function sweepStaleWorkspaces(): void {
+  for (const entry of readdirSync(REPO_ROOT, { withFileTypes: true })) {
+    if (entry.isDirectory() && entry.name.startsWith(config.workspacePrefix))
+      rmSync(path.join(REPO_ROOT, entry.name), {
+        recursive: true,
+        force: true,
+      });
+  }
+}
+
+let workspace = process.env.E2E_RUN_WORKSPACE;
+if (!workspace) {
+  sweepStaleWorkspaces();
+  workspace = mkdtempSync(path.join(REPO_ROOT, config.workspacePrefix));
+}
 process.env.E2E_RUN_WORKSPACE = workspace;
 
 /**
