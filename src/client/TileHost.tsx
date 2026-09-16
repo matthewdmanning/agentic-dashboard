@@ -26,10 +26,18 @@ const lazyComponents = new Map<
 function resolveComponent(
   itemName: string,
 ): ComponentType<Record<string, unknown>> | null {
-  const modulePath = `@workspace/registry/${itemName}.tsx`;
-  const loadModule = registryModules[modulePath];
-  if (!loadModule) return null;
+  // import.meta.glob keys its result by the resolved module path, not by the
+  // `@workspace`-prefixed pattern passed in above — Vite returns that path
+  // root-relative or absolute depending on where the workspace sits relative
+  // to the server root, never as the alias literal. Match by suffix instead
+  // of assuming a format.
+  const suffix = `/registry/${itemName}.tsx`;
+  const modulePath = Object.keys(registryModules).find((key) =>
+    key.endsWith(suffix),
+  );
+  if (!modulePath) return null;
 
+  const loadModule = registryModules[modulePath];
   const cached = lazyComponents.get(modulePath);
   if (cached) return cached;
 
