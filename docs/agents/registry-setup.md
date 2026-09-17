@@ -1,13 +1,22 @@
+---
+scope: disaster-recovery
+---
+
+> Use this only to recreate the registry setup from scratch (e.g. after
+> losing `registry.json`/`components.json`). For how the registry works
+> day to day, see `ARCHITECTURE.md`.
+
 # How to setup a registry
 
-## 1. Define `registry.json` with `PROJECT` and local block paths
+## 1. Define `registry.json` with `agentic-dashboard` and local registry-item paths
 
-Declare your items in `registry.json` using `PROJECT` as the registry name, mapping each `files.path` to your local blocks directory (e.g., `src/blocks/`).
+Declare items in `registry.json` using `agentic-dashboard` as the registry
+name, mapping each `files.path` to `registry/`.
 
 ```json
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
-  "name": "PROJECT",
+  "name": "agentic-dashboard",
   "homepage": "http://localhost:3000",
   "items": [
     {
@@ -19,7 +28,7 @@ Declare your items in `registry.json` using `PROJECT` as the registry name, mapp
       ],
       "files": [
         {
-          "path": "src/blocks/custom-card.tsx",
+          "path": "registry/custom-card.tsx",
           "type": "registry:block"
         }
       ]
@@ -28,9 +37,10 @@ Declare your items in `registry.json` using `PROJECT` as the registry name, mapp
 }
 ```
 
-## 2. Map configurable block aliases in `components.json##`
+## 2. Map registry-item aliases in `components.json`
 
-Define the custom file path alias for your blocks under `aliases` and register the local `@PROJECT` namespace in the consumer project's `components.json`.
+Define the file path alias for registry items under `aliases`, and register
+the local `@dashboard` namespace.
 
 ```json
 {
@@ -38,29 +48,29 @@ Define the custom file path alias for your blocks under `aliases` and register t
     "components": "@/components",
     "ui": "@/components/ui",
     "utils": "@/lib/utils",
-    "blocks": "@/src/blocks"
+    "blocks": "@/registry"
   },
   "registries": {
     "@base": "https://base-registry.com/r/{name}.json",
-    "@PROJECT": "http://localhost:3000/r/{name}.json"
+    "@dashboard": "http://localhost:3000/r/{name}.json"
   }
 }
 ```
 
 ## 3. Compile local static registry files
 
-Run the `shadcn` build command to resolve your local block paths and generate the static JSON endpoints inside `public/r/`.
+Run the `shadcn` build command to resolve local registry-item paths and
+generate the static JSON endpoints (`npm run registry:build` wraps this —
+see `package.json`).
 
 ```bash
 npx shadcn@latest build
-
 ```
 
-## 4. Install block items using the `@PROJECT` namespace
+## 4. Install registry items using the `@dashboard` namespace
 
 Add items to downstream local projects using the namespace CLI command.
 
 ```bash
-npx shadcn@latest add @PROJECT/custom-card
-
+npx shadcn@latest add @dashboard/custom-card
 ```
