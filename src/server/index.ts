@@ -1,5 +1,5 @@
 import { exec } from "node:child_process";
-import { existsSync, watch } from "node:fs";
+import { existsSync } from "node:fs";
 import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -13,6 +13,7 @@ const execAsync = promisify(exec);
 const PORT = Number(process.env.PORT) || 5173;
 const WORKSPACE = seedWorkspace();
 const REGISTRY_SRC = path.join(WORKSPACE, "registry");
+const REGISTRY_JSON = path.join(WORKSPACE, "registry.json");
 const BUILT_REGISTRY = path.join(WORKSPACE, "public/r/registry.json");
 
 async function buildRegistry(): Promise<void> {
@@ -77,19 +78,24 @@ async function main() {
     }, 200);
   };
 
-  // Watches the containing directory rather than the file itself: fs.watch on
-  // a single file throws EPERM on Windows.
-  watch(WORKSPACE, (_event, filename) => {
-    if (filename === "registry.json") scheduleRebuild();
-  });
-  // Not `{ recursive: true }`: registry/ is flat (no subdirectories), and
-  // Windows' recursive fs.watch can enter a self-triggering event storm (the
-  // watched directory reports itself as repeatedly "changed", faster than
-  // the debounce below ever gets a quiet window to fire) — a known libuv
-  // limitation on Windows. A plain, non-recursive watch has no such issue
-  // and covers everything this directory actually needs watched.
-  watch(REGISTRY_SRC, (_event, filename) => {
-    if (filename?.endsWith(".tsx")) scheduleRebuild();
+  // Registry rebuilds ride Vite's own watcher (chokidar) rather than a
+  // second, independent `node:fs.watch()` on the same directory. A separate
+  // native watch used to sit alongside Vite's — confirmed via
+  // `DEBUG=pw:webserver npm run test:e2e -- e2e/b3-new-tile.spec.ts`: Vite's
+  // own "page reload" HMR message for a newly-added registry file showed up
+  // (eventually, ~90s late), but our watch's own "registry rebuilt" log
+  // never fired for that same change — two watchers on one directory on
+  // Windows, one starving the other. `vite.watcher.add` guarantees coverage
+  // even for a `DASHBOARD_WORKSPACE` outside Vite's own root (deployments
+  // set an absolute path elsewhere; see `workspace.ts`).
+  vite.watcher.add(WORKSPACE);
+  vite.watcher.on("all", (_event, filePath) => {
+    if (
+      filePath === REGISTRY_JSON ||
+      (filePath.startsWith(`${REGISTRY_SRC}${path.sep}`) &&
+        filePath.endsWith(".tsx"))
+    )
+      scheduleRebuild();
   });
 
   server.listen(PORT, () => {
