@@ -14,7 +14,7 @@ import {
 } from "../playwright.config";
 
 /**
- * B3 acceptance check (SHADCN_REWRITE_PLAN.md): "a tile added while the
+ * B3 acceptance check (docs/rewrite-status.md): "a tile added while the
  * server is running renders after a browser reload, with no client rebuild
  * and no restart." This is the specific old break B3 names: the client used
  * to render from a compile-time map that nothing rebuilt, so a newly-added

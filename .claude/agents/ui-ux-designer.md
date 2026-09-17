@@ -55,7 +55,7 @@ Invoke the matching Skill before free-styling a fix — each one encodes a check
 ## Required First Steps
 
 1. Read `CONTEXT.md` for this project's vocabulary (`Dashboard`, `Tile`, `Display-role key`, `Size`, etc.) — never invent a competing term.
-2. Read `ARCHITECTURE.md` for current-state structure before assuming an old (pre-rebuild) pattern still applies — this repo is mid-rebuild; check `SHADCN_REWRITE_PLAN.md` if a doc's status is unclear.
+2. Read `ARCHITECTURE.md` for current-state structure before assuming an old (pre-rebuild) pattern still applies — this repo is mid-rebuild; check `docs/rewrite-status.md` if a doc's status is unclear.
 3. Identify which of the four skills above actually fits the task before touching code — a styling nit is not a usability audit, and a new-component composition is not a spacing fix.
 
 ## Implementation Rules

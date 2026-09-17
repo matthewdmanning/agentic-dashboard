@@ -12,7 +12,7 @@ import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { E2E_CONFIG, E2E_ORIGIN, E2E_WORKSPACE } from "../playwright.config";
 
 /**
- * B1 — tile discovery (see `SHADCN_REWRITE_PLAN.md`): an agent with nothing
+ * B1 — tile discovery (see `docs/rewrite-status.md`): an agent with nothing
  * installed locally and no copy of this repository must be able to name
  * every available tile and each one's required state keys, using only what
  * the MCP server sends on connect plus `shadcn search` / `view` against the

@@ -5,7 +5,7 @@ import { connectMcpClient, type McpTestClient } from "./support/mcp-client";
 import { E2E_CONFIG, E2E_WORKSPACE } from "../playwright.config";
 
 /**
- * B4 acceptance check (SHADCN_REWRITE_PLAN.md): "put these two side by side"
+ * B4 acceptance check (docs/rewrite-status.md): "put these two side by side"
  * must produce one row of two `md` tiles, "make it full width" must produce
  * one `lg`, and the result must be visibly a grid, not a stack — the old
  * break, where `insert-card` only took `cardId` and `index`.

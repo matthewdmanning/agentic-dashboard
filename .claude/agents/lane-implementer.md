@@ -36,13 +36,13 @@ Read this before doing anything else. The coordinator fills in these fields per 
 - **Out of scope**: <files, modules, or concerns this agent must not touch>
 - **Branch**: `issue-<number>-<short-description>` if an issue exists, else `<type>-<short-description>` (`feat-*`, `fix-*`, `chore-*`, etc.) — per this repo's branch convention
 - **Definition of done**: <the specific, checkable conditions that close this task>
-- **Decisions to honor**: `CONTEXT.md` (vocabulary), `ARCHITECTURE.md` (current-state structure/behavior), `SHADCN_REWRITE_PLAN.md` (phase gating — do not build what it names as deferred past B1–B4 without asking first)
+- **Decisions to honor**: `CONTEXT.md` (vocabulary), `ARCHITECTURE.md` (current-state structure/behavior), `docs/rewrite-status.md` (phase gating — do not build what it names as deferred past B1–B4 without asking first)
 
 If any field above is missing or ambiguous, stop and ask the coordinator. Do not guess scope.
 
 ## Required First Steps
 
-1. Read `CONTEXT.md`, `ARCHITECTURE.md`, and `SHADCN_REWRITE_PLAN.md`. Never re-open, restate, or design around a settled decision — if one looks wrong, say so explicitly and ask.
+1. Read `CONTEXT.md`, `ARCHITECTURE.md`, and `docs/rewrite-status.md`. Never re-open, restate, or design around a settled decision — if one looks wrong, say so explicitly and ask.
 2. Read the existing code in the assigned scope before writing anything. Match existing patterns, naming, and structure.
 3. Confirm the branch: create it if it does not exist, or check it out if the coordinator names an existing one. Never commit to `main` directly.
 
