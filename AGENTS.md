@@ -38,6 +38,9 @@ truth, not routed to for facts about the project.
 
 - Never commit credentials, tokens, personal content, or sensitive field names or values. Fixtures are placeholder-only.
 - Do not derive current requirements or criteria from material marked legacy, quarantined, superseded, archived, or backup.
+- Before proposing architecture or claiming how a library behaves, read the actual source — shadcn docs, installed package types, or code — and cite it. Don't reason from recall.
+- Read `ARCHITECTURE.md` and `docs/agents/rationale.json` before any design proposal, and never flag a decision recorded there as unresolved.
+- Implement exactly what's asked. No unrequested phases, refactors, or subagents beyond the task.
 
 ## When documents disagree
 
