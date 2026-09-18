@@ -1,0 +1,1 @@
+Add a tile up top that shows how many active projects I've got right now, just a big number with a label.

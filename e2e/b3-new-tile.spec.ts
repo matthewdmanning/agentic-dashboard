@@ -4,7 +4,12 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import type { Tile } from "@/dashboard/types";
+import {
+  clearDashboard,
+  restoreDashboard,
+  snapshotDashboard,
+  type DashboardSnapshot,
+} from "./support/dashboard";
 import { connectMcpClient, type McpTestClient } from "./support/mcp-client";
 import {
   E2E_CONFIG,
@@ -72,6 +77,10 @@ const FIXTURE_REGISTRY_ITEM = JSON.parse(
 // one snapshot. registry.json is untracked on this branch, so `git diff`
 // cannot catch a corrupted restore; only this byte-for-byte compare can.
 let originalRegistryJson = "";
+// The fixture's own tiles (e.g. "reading-queue"), read before this suite's
+// first reset clears them — restored in afterAll so specs that run after
+// this one still see the fixture dashboard, not an empty one.
+let originalDashboard: DashboardSnapshot;
 
 test.describe("B3 — new tiles render", () => {
   test.describe.configure({ mode: "serial" }); // shared workspace + shared registry.json — no concurrent mutation
@@ -85,15 +94,16 @@ test.describe("B3 — new tiles render", () => {
   test.beforeAll(async () => {
     client = await connectMcpClient(WORKSPACE);
     originalRegistryJson = readFileSync(REGISTRY_JSON_PATH, "utf8");
+    originalDashboard = await snapshotDashboard(client);
   });
 
   test.afterAll(async () => {
-    await removeFixture();
+    await removeFixture(client);
     await client.close();
   });
 
   test.beforeEach(async () => {
-    await resetDashboard(client);
+    await clearDashboard(client);
   });
 
   test("a tile added while the server runs renders after reload, with no client rebuild and no restart", async ({
@@ -224,17 +234,6 @@ test.describe("B3 — new tiles render", () => {
   });
 });
 
-async function resetDashboard(client: McpTestClient): Promise<void> {
-  const { tiles } = await client.callTool<{ tiles: readonly Tile[] }>(
-    "read-dashboard",
-    { scope: ["tiles"] },
-  );
-  if (tiles.length === 0) return;
-  await client.callTool("apply", {
-    mutations: tiles.map((tile) => ({ type: "remove-tile", tileId: tile.id })),
-  });
-}
-
 /**
  * The dev server can legitimately 404 `/r/registry.json` for a moment: a
  * rebuild (this test's own, or one the server triggers itself off a
@@ -311,11 +310,11 @@ async function listeningPid(port: number): Promise<string> {
 }
 
 /** Leaves no trace: fixture file, registry item, built output, and workspace dashboard state all removed. */
-async function removeFixture(): Promise<void> {
+async function removeFixture(client: McpTestClient): Promise<void> {
   rmSync(FIXTURE_COMPONENT_PATH, { force: true });
   if (originalRegistryJson)
     writeFileSync(REGISTRY_JSON_PATH, originalRegistryJson, "utf8");
   await waitForRegistryItem(false, E2E_CONFIG.tests.registryWaitTimeout);
   rmSync(FIXTURE_BUILT_PATH, { force: true });
-  rmSync(path.join(WORKSPACE, "dashboard.json"), { force: true });
+  await restoreDashboard(client, originalDashboard);
 }

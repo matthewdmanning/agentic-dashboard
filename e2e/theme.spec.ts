@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { waitForRegistryReady } from "./support/registry";
 
 /**
  * Dark mode is reachable two ways and both have broken before: the palette
@@ -13,6 +14,7 @@ const isDark = (page: Page) =>
 
 test.describe("theme toggle", () => {
   test("toggles the palette and remembers the choice", async ({ page }) => {
+    await waitForRegistryReady();
     await page.goto("/");
     await expect(toggle(page)).toBeVisible();
     expect(await isDark(page)).toBe(false);
@@ -40,6 +42,7 @@ test.describe("theme toggle", () => {
   test("follows the OS when nothing has been chosen", async ({ browser }) => {
     const context = await browser.newContext({ colorScheme: "dark" });
     const page = await context.newPage();
+    await waitForRegistryReady();
     await page.goto("/");
     expect(await isDark(page)).toBe(true);
     await context.close();

@@ -7,15 +7,23 @@ in git history if needed; this file keeps only what still gates work.
 
 **Status:** Phase 1 complete at `3be56b3`. Phase 2 in progress on
 `feat/shadcn-rebuild` — `src/` and `e2e/` were rebuilt from the specs, the
-registry-item + `meta.schema` contract is in place, and B1/B3/B4's e2e checks
-are passing (13/13 across repeat runs, per `git log`). B2 and the checklist/
-theme specs are not yet green.
+registry-item + `meta.schema` contract is in place, and B1–B4 all pass:
+B1/B3/B4 as e2e checks, B2 as `registry/contract.test.ts` (a `vitest` suite
+that drives `tsc --noEmit` over isolated fixtures — a faster, more direct
+proof of the schema-derived-props contract than a browser round-trip would
+be). `checklist.spec.ts` is green too, once b3/b4 restore the shared
+workspace dashboard after mutating it. `theme.spec.ts` still fails when run
+after `dry-run.spec.ts`: the page's `#root` never mounts, following a
+`504 (Outdated Optimize Dep)` on `react-dom` — Vite's dev-server dependency
+optimizer re-running mid-suite and racing the navigation. Root cause
+confirmed, fix not yet found.
 
 ## Acceptance criteria — B1 to B4
 
 Phase 2 is not done until all four pass, judged from a **cold agent session**
 with no prior context. Referenced by `e2e/b1-discovery.spec.ts`,
-`e2e/b3-new-tile.spec.ts`, `e2e/b4-layout.spec.ts`.
+`registry/contract.test.ts`, `e2e/b3-new-tile.spec.ts`,
+`e2e/b4-layout.spec.ts`.
 
 | #      | Capability       | Passes when                                                                                                                                                                                                                                                         |
 | ------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -1,6 +1,12 @@
 import { expect, test, type Page } from "@playwright/test";
 
-import type { Tile, TileReference, TileSize } from "@/dashboard/types";
+import type { TileReference, TileSize } from "@/dashboard/types";
+import {
+  clearDashboard,
+  restoreDashboard,
+  snapshotDashboard,
+  type DashboardSnapshot,
+} from "./support/dashboard";
 import { connectMcpClient, type McpTestClient } from "./support/mcp-client";
 import { E2E_CONFIG, E2E_WORKSPACE } from "../playwright.config";
 
@@ -24,17 +30,24 @@ test.describe("B4 — layout", () => {
   test.describe.configure({ mode: "serial" }); // one shared workspace/dashboard.json — no concurrent apply calls
 
   let client: McpTestClient;
+  // The fixture's own tiles (e.g. "reading-queue"), read before this suite's
+  // first reset clears them — restored in afterAll so specs that run after
+  // this one still see the fixture dashboard, not whatever this suite last
+  // left behind.
+  let originalDashboard: DashboardSnapshot;
 
   test.beforeAll(async () => {
     client = await connectMcpClient(WORKSPACE);
+    originalDashboard = await snapshotDashboard(client);
   });
 
   test.afterAll(async () => {
+    await restoreDashboard(client, originalDashboard);
     await client.close();
   });
 
   test.beforeEach(async () => {
-    await resetDashboard(client);
+    await clearDashboard(client);
   });
 
   test("two md tiles land in the same row", async ({ page }) => {
@@ -175,16 +188,6 @@ async function applyTiles(
   });
 }
 
-async function resetDashboard(client: McpTestClient): Promise<void> {
-  const { tiles } = await client.callTool<{ tiles: readonly Tile[] }>(
-    "read-dashboard",
-    { scope: ["tiles"] },
-  );
-  if (tiles.length === 0) return;
-  await client.callTool("apply", {
-    mutations: tiles.map((tile) => ({ type: "remove-tile", tileId: tile.id })),
-  });
-}
 
 async function requireTileBox(page: Page, tileId: string) {
   const box = await page.locator(`[data-tile-id="${tileId}"]`).boundingBox();
