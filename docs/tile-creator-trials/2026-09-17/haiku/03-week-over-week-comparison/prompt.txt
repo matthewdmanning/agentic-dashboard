@@ -1,1 +1,0 @@
-I want a widget comparing this week's completed tasks against last week's, side by side.
