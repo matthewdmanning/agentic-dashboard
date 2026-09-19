@@ -198,10 +198,16 @@ function startServer(
   workspace: string,
   port: number,
   stdio: "inherit" | "ignore",
+  extraEnv?: Record<string, string>,
 ) {
   return spawn(process.execPath, [TSX_CLI, path.resolve(REPO_ROOT, entry)], {
     cwd: REPO_ROOT,
-    env: { ...process.env, DASHBOARD_WORKSPACE: workspace, PORT: String(port) },
+    env: {
+      ...process.env,
+      DASHBOARD_WORKSPACE: workspace,
+      PORT: String(port),
+      ...extraEnv,
+    },
     stdio,
   });
 }
@@ -318,7 +324,14 @@ async function chooseTarget(): Promise<{
   if (pinned) {
     const run = readRun(pinned);
     if (run) {
-      const state = await probePort(run.port);
+      let state = await probePort(run.port);
+      if (!(state.kind === "dashboard" && sameDirectory(state.workspace, pinned))) {
+        // The record may have just been written by a dashboard still coming
+        // up; one retry after a short delay tells a genuine race apart from a
+        // truly dead run before this concludes the run is gone.
+        await new Promise((resolve) => setTimeout(resolve, config.server.pollInterval));
+        state = await probePort(run.port);
+      }
       if (state.kind === "dashboard" && sameDirectory(state.workspace, pinned))
         return { workspace: pinned, port: run.port };
       // The record points at a port nobody answers: the run behind it is gone,
@@ -368,7 +381,10 @@ async function runMcp(): Promise<void> {
   const { workspace, dashboard, port } = await chooseTarget();
   warn(`attached to ${origin(port)} serving ${workspace}`);
 
-  const child = startServer(config.commands.mcp, workspace, port, "inherit");
+  const mcpLogFile = path.join(workspace, "mcp.log");
+  const child = startServer(config.commands.mcp, workspace, port, "inherit", {
+    MCP_LOG_FILE: mcpLogFile,
+  });
   forwardSignals(child);
   child.once("exit", () => dashboard?.kill());
 }

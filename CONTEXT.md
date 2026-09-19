@@ -99,3 +99,10 @@ The screen through which a person manages their connections and their own appear
 Managing an integration here means connecting or disconnecting it — granting and revoking this dashboard's authorization to use a service. What a tile draws from that service is a query, not a setting on the connection.
 
 Roles are not edited here.
+
+## Active agent MCP test
+
+A trial of one AI agent, model, and MCP server building a complete dashboard — including new tiles — from a fixed prompt sequence, against a single dashboard instance and a single MCP instance. The trial's registry starts empty (no reusable dashboard tile items), so every tile is authored from base shadcn/ui components rather than placed from an existing item. Prompts are given one at a time, each only after the agent has fully finished the last.
+
+Judged by a human, not automated. A run keeps its config — agent model, reasoning effort, prompts used, MCP instructions — alongside its evidence: one screenshot of the final dashboard, and the agent's log, including its reasoning and the MCP log.
+_Avoid_: eval, benchmark

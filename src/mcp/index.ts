@@ -1,3 +1,5 @@
+import { appendFileSync } from "node:fs";
+
 import { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
@@ -19,6 +21,31 @@ import {
 } from "./schemas";
 
 const ALL_CATEGORIES = ["tiles", "references"] as const;
+
+/**
+ * Opt-in only (unset `MCP_LOG_FILE` is a no-op): a trial run sets this to
+ * the tier's workspace so every prompt's MCP calls append to one file.
+ * Never writes to stdout — that channel is the stdio transport itself.
+ */
+const logFile = process.env.MCP_LOG_FILE;
+function logCall(
+  tool: string,
+  input: unknown,
+  result: unknown,
+  startedAt: number,
+): void {
+  if (!logFile) return;
+  appendFileSync(
+    logFile,
+    `${JSON.stringify({
+      ts: new Date().toISOString(),
+      tool,
+      input,
+      result,
+      ms: Date.now() - startedAt,
+    })}\n`,
+  );
+}
 
 const server = new McpServer(
   { name: "agentic-dashboard", version: "0.0.0" },
@@ -54,6 +81,7 @@ server.registerTool(
     }),
   },
   async ({ scope }) => {
+    const startedAt = Date.now();
     const dashboard = await readDashboard();
     const carried = scope && scope.length > 0 ? scope : ALL_CATEGORIES;
     const result = {
@@ -65,6 +93,7 @@ server.registerTool(
         ? { references: dashboard.references }
         : {}),
     };
+    logCall("read-dashboard", { scope }, result, startedAt);
     return {
       content: [{ type: "text" as const, text: JSON.stringify(result) }],
       structuredContent: result,
@@ -109,6 +138,7 @@ server.registerTool(
     ]),
   },
   async ({ mutations }) => {
+    const startedAt = Date.now();
     const current = await readDashboard();
     try {
       const dashboard = applyMutations(current, mutations);
@@ -116,6 +146,7 @@ server.registerTool(
       // There is no offline queue yet, so this is always "applied" — reported
       // explicitly rather than left for the caller to assume.
       const result = { status: "applied" as const, dashboard };
+      logCall("apply", { mutations }, result, startedAt);
       return {
         content: [{ type: "text" as const, text: JSON.stringify(result) }],
         structuredContent: result,
@@ -127,6 +158,7 @@ server.registerTool(
           failure: error.failure,
           message: error.message,
         };
+        logCall("apply", { mutations }, result, startedAt);
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result,

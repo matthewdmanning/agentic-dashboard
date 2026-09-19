@@ -109,10 +109,14 @@ export function seedWorkspace(): string {
     ["src/lib", "lib"],
     ["src/hooks", "hooks"],
   ]) {
-    cpSync(path.join(APP_ROOT, source), path.join(workspace, target), {
+    const targetPath = path.join(workspace, target);
+    // Skip a target that already exists rather than letting `cpSync` walk
+    // into it file-by-file: a caller may have pre-seeded it (e.g. a
+    // symlink pointing at this project's own `components/`), and copying
+    // a directory onto itself through such a link throws.
+    if (existsSync(targetPath)) continue;
+    cpSync(path.join(APP_ROOT, source), targetPath, {
       recursive: true,
-      force: false,
-      errorOnExist: false,
       // The registry's own test suite belongs to this repo, not the
       // starter tiles copied into a deployed workspace.
       filter: (src) => !src.endsWith(".test.ts"),

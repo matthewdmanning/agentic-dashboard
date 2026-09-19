@@ -9,7 +9,7 @@
     "dry-run": "tsx dry-run/runner.ts dashboard",
     "dry-run:mcp": "tsx dry-run/runner.ts mcp",
     "registry:build": "tsx scripts/build-registry.ts",
-    "tile-creator:e2e": "tsx scripts/tile-creator-e2e.ts",
+    "active-agent-mcp-test": "tsx active-agent-trials/active-agent-mcp-test.ts",
     "typecheck": "tsx scripts/typecheck.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
