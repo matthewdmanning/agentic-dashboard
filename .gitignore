@@ -36,6 +36,10 @@ screenshots/
 test-results/
 playwright-report/
 
+# Active agent MCP test run output — the driver and fixtures are source,
+# but each run's evidence (logs, screenshots, final-state JSON) is not.
+active-agent-trials/trials/
+
 # Agent skills, installed per-machine
 .claude/skills/
 
