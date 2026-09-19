@@ -97,10 +97,15 @@ around it.
 
 ## Step 3 — Author a New Item (only if Step 2 found no fit)
 
-Before writing any file, load `shadcn` for component discovery/installation,
-`dataviz` before any chart/graph/stat visual, and `frontend-design` for
-layout and aesthetic choices. Then, inside the writable workspace the MCP's
-instructions named:
+Before writing any file, load `shadcn` for component discovery/installation
+and `frontend-design` for layout and aesthetic choices. Before any
+chart/graph/stat visual specifically, read
+`.claude/agents/active-agent-mcp-visualizations.md` instead of the general
+`dataviz` skill — it carries the same color/mark/form rules scoped to what a
+tile actually is here, without the dataviz skill's page-level assumptions
+(filter rows, table-view toggles, its own palette) that don't fit a tile and
+would drift out of sync with this project's real chart tokens. Then, inside
+the writable workspace the MCP's instructions named:
 
 1. `shadcn add --dry-run` the chosen component, confirm the install target
    is inside that workspace, then install for real.
