@@ -58,8 +58,7 @@ async function main() {
       const publicDir = path.join(WORKSPACE, "public");
       const requested = path.join(publicDir, req.url.split("?")[0]);
       const withinPublicDir =
-        requested === publicDir ||
-        requested.startsWith(publicDir + path.sep);
+        requested === publicDir || requested.startsWith(publicDir + path.sep);
       if (!withinPublicDir || !existsSync(requested)) {
         res.statusCode = 404;
         res.setHeader("content-type", "application/json");

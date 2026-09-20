@@ -188,7 +188,6 @@ async function applyTiles(
   });
 }
 
-
 async function requireTileBox(page: Page, tileId: string) {
   const box = await page.locator(`[data-tile-id="${tileId}"]`).boundingBox();
   if (!box)
