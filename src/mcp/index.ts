@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
 import { z } from "zod";
 
+import { resolveAccount } from "../auth/whitelist";
 import {
   applyMutations,
   readDashboard,
@@ -52,6 +53,16 @@ const server = new McpServer(
   { instructions: INSTRUCTIONS },
 );
 
+/**
+ * Stdio: one process per client, so the credential is read from the
+ * environment and resolved exactly once, then reused for every tool call
+ * this process ever makes — there is no per-call header to re-resolve from.
+ */
+const account = resolveAccount(process.env.DASHBOARD_CREDENTIAL);
+
+const UNAUTHENTICATED_MESSAGE =
+  "No credential presented, or the presented credential is not on the whitelist.";
+
 server.registerTool(
   "read-dashboard",
   {
@@ -82,6 +93,13 @@ server.registerTool(
   },
   async ({ scope }) => {
     const startedAt = Date.now();
+    if (!account) {
+      logCall("read-dashboard", { scope }, { status: "error" }, startedAt);
+      return {
+        content: [{ type: "text" as const, text: UNAUTHENTICATED_MESSAGE }],
+        isError: true,
+      };
+    }
     const dashboard = await readDashboard();
     const carried = scope && scope.length > 0 ? scope : ALL_CATEGORIES;
     const result = {
@@ -112,7 +130,7 @@ server.registerTool(
       "something they depend on, and nothing the dashboard currently does can be offline, so no path " +
       'returns "queued" yet. Read the status rather than assuming either one — that is why it is reported. ' +
       "If any mutation fails, none are applied; the failure is reported by the interface's own name " +
-      '("unknown-tile", "duplicate-tile", "unknown-item", or "invalid-state"), never as prose to pattern-match.',
+      '("unknown-tile", "duplicate-tile", "unknown-item", "invalid-state", or "unauthenticated"), never as prose to pattern-match.',
     inputSchema: z.object({
       mutations: z
         .array(mutationSchema)
@@ -139,8 +157,11 @@ server.registerTool(
   },
   async ({ mutations }) => {
     const startedAt = Date.now();
-    const current = await readDashboard();
     try {
+      if (!account) {
+        throw new MutationError("unauthenticated", UNAUTHENTICATED_MESSAGE);
+      }
+      const current = await readDashboard();
       const dashboard = applyMutations(current, mutations);
       await writeDashboard(dashboard);
       // There is no offline queue yet, so this is always "applied" — reported

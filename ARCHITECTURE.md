@@ -75,7 +75,9 @@ One decision covers every request. It takes the mutation's type, the acting acco
 
 Ownership is an input to that decision, not a rule beside it. Something belonging to the acting account — their own queries, connections, and appearance — is allowed without reference to a level, and that falls out of the same call rather than bypassing it.
 
-Two roles ship by default: one that may write data, tiles, and integrations and read roles; one that may write data and read the rest. A caller with no credential is the local machine's own user, with full permissions, or nobody. Being on loopback is not itself proof, since another account on the same host can reach the port.
+Two roles ship by default: one that may write data, tiles, and integrations and read roles; one that may write data and read the rest — only the first can change a tile at all. A caller with no credential is denied outright — the dashboard is internet-facing, so there is no local-machine fallback identity to grant.
+
+Every caller is resolved to an account by the auth provider before the permission decision runs (see `CONTEXT.md`). This project's own provider is a fixed whitelist of credential-to-account mappings, standing in for the "complex, high-security service" a real deployment would use — swapping it later changes nothing downstream, since the permission decision only ever sees the resolved account. There is no in-app account-creation mutation; an account exists because the whitelist says so.
 
 Adding a tile mapper is allowed to anyone, even though the store it lands in is shared: someone who cannot add one cannot make their own query render. A mapper others reference has no single owner, so changing or deleting one falls back to the level, and deleting one still in use fails rather than cascading.
 

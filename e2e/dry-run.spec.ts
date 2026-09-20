@@ -147,7 +147,13 @@ async function connectAgent(env: NodeJS.ProcessEnv): Promise<Client> {
     command: server.command === "node" ? process.execPath : server.command,
     args: server.args,
     cwd: REPO_ROOT,
-    env: { ...process.env, ...env } as Record<string, string>,
+    // Explicit, deterministic credential matching the seed account in
+    // src/auth/whitelist.ts — not left to a developer's own .env.local.
+    env: {
+      ...process.env,
+      DASHBOARD_CREDENTIAL: "dev-owner",
+      ...env,
+    } as Record<string, string>,
     stderr: "pipe",
   });
   const client = new Client({ name: "dry-run-check", version: "0.0.0" });

@@ -30,7 +30,14 @@ export async function connectMcpClient(
     command: process.platform === "win32" ? "npm.cmd" : "npm",
     args: ["run", "mcp"],
     cwd: REPO_ROOT,
-    env: { ...process.env, DASHBOARD_WORKSPACE: workspace },
+    // Explicit, not left to a developer's own .env.local: e2e needs a
+    // deterministic credential regardless of what's on this machine, matching
+    // the seed account in src/auth/whitelist.ts.
+    env: {
+      ...process.env,
+      DASHBOARD_WORKSPACE: workspace,
+      DASHBOARD_CREDENTIAL: "dev-owner",
+    },
   });
 
   const client = new Client({ name: "e2e-mcp-client", version: "0.0.0" });

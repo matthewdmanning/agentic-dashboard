@@ -57,7 +57,8 @@ export type MutationFailure =
   | "unknown-tile"
   | "duplicate-tile"
   | "unknown-item"
-  | "invalid-state";
+  | "invalid-state"
+  | "unauthenticated";
 
 export class MutationError extends Error {
   constructor(
