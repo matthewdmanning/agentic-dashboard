@@ -25,6 +25,16 @@ async function main() {
 
   const vite = await createViteServer({
     root: APP_ROOT,
+    // Vite's default cacheDir is `<root>/node_modules/.vite`, and every
+    // dashboard process shares one root — so the e2e webServer and each
+    // dry-run-spawned dashboard would re-optimize deps into the same
+    // directory at the same time, and a page load could be served a stale
+    // asset hash (504 Outdated Optimize Dep). The port is already unique per
+    // process, so it separates them. Keeping this under APP_ROOT rather than
+    // under the workspace matters: `vite.watcher.add(WORKSPACE)` below
+    // re-adds the directory Vite normally ignores, so a cache inside the
+    // workspace would report every optimizer write as a source change.
+    cacheDir: path.join(APP_ROOT, "node_modules", `.vite-${PORT}`),
     server: { middlewareMode: true },
     appType: "spa",
   });
