@@ -1,0 +1,56 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "checklist-tile",
+  "title": "Checklist Tile",
+  "description": "Displays a titled list of toggleable checklist items.",
+  "registryDependencies": [
+    "card",
+    "checkbox",
+    "field"
+  ],
+  "files": [
+    {
+      "path": "registry/checklist-tile.tsx",
+      "content": "import { useId } from \"react\";\n\nimport {\n  Card,\n  CardContent,\n  CardHeader,\n  CardTitle,\n} from \"@/components/ui/card\";\nimport { Checkbox } from \"@/components/ui/checkbox\";\nimport {\n  Field,\n  FieldGroup,\n  FieldLabel,\n  FieldLegend,\n  FieldSet,\n} from \"@/components/ui/field\";\nimport { schemas } from \"./schemas.generated\";\nimport type { JsonSchemaToType } from \"./schema\";\n\ntype ChecklistTileProps = JsonSchemaToType<\n  (typeof schemas)[\"checklist-tile\"]\n>;\n\n// Use this function to render a titled group of independently toggleable checklist items.\nexport default function ChecklistTile({\n  CHECKLIST_TITLE,\n  CHECKLIST_ITEMS,\n}: ChecklistTileProps) {\n  const idPrefix = useId();\n\n  return (\n    <Card>\n      <CardHeader>\n        <CardTitle>{CHECKLIST_TITLE}</CardTitle>\n      </CardHeader>\n      <CardContent>\n        <FieldSet>\n          <FieldLegend className=\"sr-only\">{CHECKLIST_TITLE}</FieldLegend>\n          <FieldGroup>\n            {CHECKLIST_ITEMS.map((item, index) => {\n              const id = `${idPrefix}-${index}`;\n\n              return (\n                <Field key={id} orientation=\"horizontal\">\n                  <Checkbox id={id} defaultChecked={item.CHECKED} />\n                  <FieldLabel htmlFor={id}>{item.LABEL}</FieldLabel>\n                </Field>\n              );\n            })}\n          </FieldGroup>\n        </FieldSet>\n      </CardContent>\n    </Card>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "meta": {
+    "schema": {
+      "type": "object",
+      "properties": {
+        "CHECKLIST_TITLE": {
+          "type": "string",
+          "default": ""
+        },
+        "CHECKLIST_ITEMS": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "LABEL": {
+                "type": "string",
+                "default": ""
+              },
+              "CHECKED": {
+                "type": "boolean",
+                "default": false
+              }
+            },
+            "required": [
+              "LABEL",
+              "CHECKED"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "required": [
+        "CHECKLIST_TITLE",
+        "CHECKLIST_ITEMS"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "type": "registry:block"
+}

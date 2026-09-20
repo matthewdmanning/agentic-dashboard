@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "agentic-dashboard-dry-run": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["node_modules/tsx/dist/cli.mjs", "dry-run/runner.ts", "mcp"]
+    },
+    "github": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ],
+      "env": {}
+    }
+  }
+}

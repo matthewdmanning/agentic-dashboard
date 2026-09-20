@@ -1,0 +1,17 @@
+{
+  "name": "b3-fixture-tile",
+  "type": "registry:component",
+  "title": "B3 Fixture Tile",
+  "description": "Test-only fixture for the B3 acceptance check. Never shipped; removed by the test's own cleanup.",
+  "files": [
+    { "path": "registry/b3-fixture-tile.tsx", "type": "registry:component" }
+  ],
+  "meta": {
+    "schema": {
+      "type": "object",
+      "properties": { "MESSAGE": { "type": "string", "default": "" } },
+      "required": ["MESSAGE"],
+      "additionalProperties": false
+    }
+  }
+}
