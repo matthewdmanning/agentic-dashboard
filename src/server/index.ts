@@ -54,14 +54,18 @@ async function main() {
     // Vite serves `public/` itself, but its SPA fallback answers a missing
     // `/r/` item with the index shell at 200. An agent discovering tiles
     // through the shadcn CLI would then parse HTML as a registry item.
-    if (
-      req.url?.startsWith("/r/") &&
-      !existsSync(path.join(WORKSPACE, "public", req.url.split("?")[0]))
-    ) {
-      res.statusCode = 404;
-      res.setHeader("content-type", "application/json");
-      res.end(JSON.stringify({ error: "no-such-registry-item" }));
-      return;
+    if (req.url?.startsWith("/r/")) {
+      const publicDir = path.join(WORKSPACE, "public");
+      const requested = path.join(publicDir, req.url.split("?")[0]);
+      const withinPublicDir =
+        requested === publicDir ||
+        requested.startsWith(publicDir + path.sep);
+      if (!withinPublicDir || !existsSync(requested)) {
+        res.statusCode = 404;
+        res.setHeader("content-type", "application/json");
+        res.end(JSON.stringify({ error: "no-such-registry-item" }));
+        return;
+      }
     }
     vite.middlewares(req, res);
   });
