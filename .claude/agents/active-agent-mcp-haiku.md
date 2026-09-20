@@ -18,7 +18,6 @@ tools:
   - Edit
   - Grep
   - Glob
-  - Bash
   - Skill
   - mcp__agentic-dashboard-dry-run__read-dashboard
   - mcp__agentic-dashboard-dry-run__apply

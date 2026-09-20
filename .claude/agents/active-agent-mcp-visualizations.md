@@ -41,7 +41,6 @@ number was the answer.
 
 | The data is... | Use |
 |---|---|
-| A single current value (± a trend) | `stat-tile` pattern — see `registry/stat-tile.tsx` |
 | A ratio against a limit | A meter/progress bar, same-ramp track |
 | Trend over a handful of points | Line (single series) or thin bar/column |
 | Comparing 2–5 distinct series | Multi-line or grouped/stacked bar, categorical color |
@@ -87,27 +86,8 @@ wraps Recharts) rather than building one by hand. This is local component
 state, not a query — it doesn't conflict with a tile's "straight read, no
 transform" contract. Skip it only for a bare stat tile with no plot.
 
-## What NOT to build into a tile
-
-These come from the general `dataviz` skill but don't apply at tile scale —
-do not add them:
-
-- **No filter row or date-range picker inside a tile.** A tile has no query
-  of its own; its `state` is whatever was set on it (see `CONTEXT.md`'s Tile
-  entry). If a request implies filtering, that's either a different tile
-  (different `state`) or out of scope — say so rather than inventing
-  interactive filter controls.
-- **No table-view toggle.** Tiles are `sm`/`md`/`lg` cards, not a page —
-  there's no room for a chart/table view switch, and no existing tile
-  pattern supports it.
-- **No colorblind-safety validator script to run.** The palette is already
-  fixed and chosen by the project (`--chart-1..5`); use it as specified
-  above instead of re-deriving or re-validating a palette per tile.
-
 ## Anti-patterns (check before reporting done)
 
-- Dual-axis chart (two y-scales) — use two tiles, or index both series to a
-  common base on one axis instead.
 - Recolor-on-filter — a series keeps its `--chart-N` slot even as others
   come and go.
 - A value-ramp (light-to-dark) on nominal categories that have no order —
