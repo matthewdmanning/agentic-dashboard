@@ -15,6 +15,8 @@ import assert from "node:assert";
 import path from "node:path";
 import { chromium } from "@playwright/test";
 
+import { killProcessTree } from "../dry-run/kill-process-tree";
+
 /**
  * Runs the active agent MCP test (see CONTEXT.md's "Active agent MCP test"
  * entry) end to end, driving the active-agent-mcp tier subagents
@@ -383,11 +385,7 @@ async function waitPortFree(port: number, timeoutMs = 5000): Promise<void> {
 
 /** Kills the dashboard's whole process tree, then waits for its port to free up before the next tier reuses the port range. */
 async function stopDashboard(child: ChildProcess, port: number): Promise<void> {
-  if (child.pid !== undefined) {
-    if (process.platform === "win32")
-      spawnSync("taskkill", ["/PID", String(child.pid), "/T", "/F"]);
-    else child.kill("SIGTERM");
-  }
+  killProcessTree(child);
   await waitPortFree(port);
 }
 

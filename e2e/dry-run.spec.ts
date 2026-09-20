@@ -13,6 +13,8 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { expect, test } from "@playwright/test";
 
+import { killProcessTree } from "../dry-run/kill-process-tree";
+
 /**
  * The dry run is the surface an agent attaches to, and more than one of them
  * can be up at once: two developers' agents, or a test lane beside a person's
@@ -182,7 +184,7 @@ test.describe("dry run", () => {
   });
 
   test.afterEach(async () => {
-    for (const child of started.keys()) child.kill();
+    for (const child of started.keys()) killProcessTree(child);
     started.clear();
     // Only what this check created. A person's own runs are left alone, which
     // is the same rule the runner follows.

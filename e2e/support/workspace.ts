@@ -55,7 +55,18 @@ export default function seedWorkspace(): () => void {
             "Specs must mutate the copied workspace, never the fixture.",
         );
     } finally {
-      rmSync(workspace, { recursive: true, force: true });
+      // maxRetries/retryDelay: on Windows, a just-stopped webServer process
+      // can still hold a file handle or watch on this directory for a moment
+      // after Playwright reports it stopped — plain rmSync then fails with
+      // EPERM. Node retries these exact errors (EBUSY, EPERM, ENOTEMPTY,
+      // ...) itself when asked to; POSIX systems never hit them, so this is
+      // a no-op there.
+      rmSync(workspace, {
+        recursive: true,
+        force: true,
+        maxRetries: 5,
+        retryDelay: 200,
+      });
     }
   };
 }
