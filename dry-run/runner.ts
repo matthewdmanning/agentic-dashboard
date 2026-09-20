@@ -12,6 +12,8 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import path from "node:path";
 
+import { killProcessTree } from "./kill-process-tree";
+
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
 const CONFIG_PATH = path.join(import.meta.dirname, "config.json");
 const TSX_CLI = path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
@@ -239,7 +241,7 @@ async function dashboardCameUp(
 }
 
 function forwardSignals(child: ReturnType<typeof spawn>): void {
-  const stop = () => child.kill();
+  const stop = () => killProcessTree(child);
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);
 }
@@ -386,7 +388,9 @@ async function runMcp(): Promise<void> {
     MCP_LOG_FILE: mcpLogFile,
   });
   forwardSignals(child);
-  child.once("exit", () => dashboard?.kill());
+  child.once("exit", () => {
+    if (dashboard) killProcessTree(dashboard);
+  });
 }
 
 async function run(): Promise<void> {
