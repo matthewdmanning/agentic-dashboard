@@ -3,9 +3,14 @@ import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
 import { loadE2EConfig } from "./e2e/support/config";
+import { loadEnvLocal } from "./scripts/load-env-local";
+
+const REPO_ROOT = path.resolve(import.meta.dirname);
+// Same `.env.local` convention as `dev`/`mcp` (see scripts/load-env-local.ts),
+// so specs run by `playwright test` see a locally-set credential.
+loadEnvLocal(REPO_ROOT);
 
 const config = loadE2EConfig();
-const REPO_ROOT = path.resolve(import.meta.dirname);
 
 /**
  * Deletes throwaway workspaces left by a run that never reached its own

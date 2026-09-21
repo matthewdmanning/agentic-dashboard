@@ -16,6 +16,7 @@ import path from "node:path";
 import { chromium } from "@playwright/test";
 
 import { killProcessTree } from "../dry-run/kill-process-tree";
+import { loadEnvLocal } from "../scripts/load-env-local";
 
 /**
  * Runs the active agent MCP test (see CONTEXT.md's "Active agent MCP test"
@@ -44,6 +45,9 @@ import { killProcessTree } from "../dry-run/kill-process-tree";
  */
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+// Same `.env.local` convention as `dev`/`mcp` (see scripts/load-env-local.ts).
+// Spawned children below inherit it via `env: { ...process.env, ... }`.
+loadEnvLocal(REPO_ROOT);
 const TSX_CLI = path.join(REPO_ROOT, "node_modules/tsx/dist/cli.mjs");
 const TIERS = ["haiku", "sonnet", "opus"] as const;
 type Tier = (typeof TIERS)[number];
