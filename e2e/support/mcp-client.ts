@@ -20,11 +20,23 @@ export type McpTestClient = {
     name: string,
     args?: Record<string, unknown>,
   ) => Promise<T>;
+  /** The tool result as the protocol returns it, including `isError` — for tests that assert a refusal. */
+  callToolRaw: (
+    name: string,
+    args?: Record<string, unknown>,
+  ) => Promise<Awaited<ReturnType<Client["callTool"]>>>;
   close: () => Promise<void>;
 };
 
+/**
+ * `credential` is passed to the server process verbatim. An empty string
+ * means "no credential presented": a variable set in the child's environment
+ * beats `--env-file-if-exists=.env.local`, so a developer's own credential
+ * can never leak into a test that means to present none.
+ */
 export async function connectMcpClient(
   workspace: string,
+  credential = "dev-owner",
 ): Promise<McpTestClient> {
   const transport = new StdioClientTransport({
     command: process.platform === "win32" ? "npm.cmd" : "npm",
@@ -36,7 +48,7 @@ export async function connectMcpClient(
     env: {
       ...process.env,
       DASHBOARD_WORKSPACE: workspace,
-      DASHBOARD_CREDENTIAL: "dev-owner",
+      DASHBOARD_CREDENTIAL: credential,
     },
   });
 
@@ -52,6 +64,9 @@ export async function connectMcpClient(
         );
       }
       return result.structuredContent as T;
+    },
+    async callToolRaw(name: string, args: Record<string, unknown> = {}) {
+      return await client.callTool({ name, arguments: args });
     },
     async close() {
       await client.close();
