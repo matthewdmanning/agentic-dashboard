@@ -8,6 +8,7 @@ import { resolveAccount } from "../auth/whitelist";
 import {
   applyMutations,
   readDashboard,
+  readItemSchemas,
   writeDashboard,
 } from "../dashboard/store";
 import { MutationError } from "../dashboard/types";
@@ -130,7 +131,7 @@ server.registerTool(
       "something they depend on, and nothing the dashboard currently does can be offline, so no path " +
       'returns "queued" yet. Read the status rather than assuming either one — that is why it is reported. ' +
       "If any mutation fails, none are applied; the failure is reported by the interface's own name " +
-      '("unknown-tile", "duplicate-tile", "unknown-item", "invalid-state", or "unauthenticated"), never as prose to pattern-match.',
+      '("unknown-tile", "duplicate-tile", "unknown-item", "invalid-state", "unauthenticated", or "forbidden"), never as prose to pattern-match.',
     inputSchema: z.object({
       mutations: z
         .array(mutationSchema)
@@ -161,8 +162,16 @@ server.registerTool(
       if (!account) {
         throw new MutationError("unauthenticated", UNAUTHENTICATED_MESSAGE);
       }
-      const current = await readDashboard();
-      const dashboard = applyMutations(current, mutations);
+      const [current, itemSchemas] = await Promise.all([
+        readDashboard(),
+        readItemSchemas(),
+      ]);
+      const dashboard = applyMutations(
+        current,
+        mutations,
+        account,
+        itemSchemas,
+      );
       await writeDashboard(dashboard);
       // There is no offline queue yet, so this is always "applied" — reported
       // explicitly rather than left for the caller to assume.

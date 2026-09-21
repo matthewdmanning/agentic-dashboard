@@ -59,6 +59,7 @@ export const mutationFailureSchema = z.enum([
   "unknown-item",
   "invalid-state",
   "unauthenticated",
+  "forbidden",
 ]);
 
 /** Mirrors the `Mutation` union in `src/dashboard/types.ts`. Keep the two in sync by hand. */

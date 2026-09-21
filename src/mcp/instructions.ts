@@ -35,4 +35,22 @@ use the two dashboard tools below; do not attempt source installation.
 read-dashboard reads the current tiles and placements. apply atomically
 changes dashboard state: add or remove a tile, set state or title, and place
 or resize it. Source files and component installation are outside apply.
+
+Every account acting through apply needs a level on the "data" category to
+add, edit, or delete an entry inside a tile's state (an object in an
+array-shaped state value, or the whole state for a tile with no array).
+Editing or deleting an entry you do not own is refused unless your account
+holds write on data; adding a new entry, reordering entries, and changing a
+tile's placement never need ownership of anything, but still need a level on
+data or tiles as above. Ownership only ever narrows which entries your level
+reaches — it never grants an operation on its own, so an account with no
+level on data is refused even for an entry it owns.
+
+Mark a field as interactive by adding "interactive": true directly on that
+field's own definition in meta.schema (e.g. a checklist item's CHECKED
+property), not in a separate list. Changing only interactive-marked fields on
+an entry is exempt from the ownership check above — any account with its
+level on data may toggle it regardless of who owns the entry — but the level
+itself is still required; the marker never exempts a level check, only
+ownership.
 `.trim();

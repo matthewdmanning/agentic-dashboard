@@ -1,6 +1,12 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  checkMutationPermission,
+  stampEntryOwnership,
+  type ItemSchemas,
+} from "../auth/permissions";
+import type { Account } from "../auth/types";
 import { workspaceDirectory } from "../workspace";
 
 import {
@@ -64,7 +70,24 @@ const withReference = (
   return [...next.slice(0, at), reference, ...next.slice(at)];
 };
 
-const applyMutation = (dashboard: Dashboard, mutation: Mutation): Dashboard => {
+const applyMutation = (
+  dashboard: Dashboard,
+  mutation: Mutation,
+  account: Account,
+  itemSchemas: ItemSchemas,
+): Dashboard => {
+  const failure = checkMutationPermission({
+    mutation,
+    account,
+    dashboard,
+    itemSchemas,
+  });
+  if (failure) {
+    throw new MutationError(
+      failure,
+      `Account "${account.id}" (role "${account.role}") may not apply a "${mutation.type}" mutation.`,
+    );
+  }
   switch (mutation.type) {
     case "add-tile": {
       if (dashboard.tiles.some((tile) => tile.id === mutation.tile.id)) {
@@ -91,16 +114,27 @@ const applyMutation = (dashboard: Dashboard, mutation: Mutation): Dashboard => {
         ),
       };
     }
-    case "set-tile-state":
-    case "set-tile-title": {
+    case "set-tile-state": {
       const existing = requireTile(dashboard, mutation.tileId);
-      const changed: Tile =
-        mutation.type === "set-tile-state"
-          ? { ...existing, state: mutation.state }
-          : { ...existing, title: mutation.title };
+      const state = stampEntryOwnership(
+        existing.state,
+        mutation.state,
+        account.id,
+      );
       return {
         tiles: dashboard.tiles.map((tile) =>
-          tile.id === mutation.tileId ? changed : tile,
+          tile.id === mutation.tileId ? { ...existing, state } : tile,
+        ),
+        references: dashboard.references,
+      };
+    }
+    case "set-tile-title": {
+      const existing = requireTile(dashboard, mutation.tileId);
+      return {
+        tiles: dashboard.tiles.map((tile) =>
+          tile.id === mutation.tileId
+            ? { ...existing, title: mutation.title }
+            : tile,
         ),
         references: dashboard.references,
       };
@@ -126,8 +160,42 @@ const applyMutation = (dashboard: Dashboard, mutation: Mutation): Dashboard => {
   }
 };
 
-/** All or nothing: a failing mutation leaves the input untouched, since nothing is written until every one applies. */
+/**
+ * All or nothing: a failing mutation leaves the input untouched, since
+ * nothing is written until every one applies. `account` is required — there
+ * is no code path that applies a mutation without a resolved acting account.
+ */
 export const applyMutations = (
   dashboard: Dashboard,
   mutations: readonly Mutation[],
-): Dashboard => mutations.reduce(applyMutation, dashboard);
+  account: Account,
+  itemSchemas: ItemSchemas,
+): Dashboard =>
+  mutations.reduce(
+    (current, mutation) =>
+      applyMutation(current, mutation, account, itemSchemas),
+    dashboard,
+  );
+
+/**
+ * The workspace's registry items by name, for the permission decision's
+ * interactive-field lookup. Read per `apply` rather than cached: an agent
+ * adds items to this file while the server runs, and a stale map would gate
+ * a field its author marked interactive. A missing or unreadable registry
+ * yields no items, so the decision falls back to ownership.
+ */
+export async function readItemSchemas(): Promise<ItemSchemas> {
+  try {
+    const registry = JSON.parse(
+      await readFile(path.join(workspaceDirectory(), "registry.json"), "utf8"),
+    ) as { items?: readonly { name: string; meta?: { schema?: unknown } }[] };
+    return Object.fromEntries(
+      (registry.items ?? []).map((item) => [
+        item.name,
+        item.meta?.schema ?? {},
+      ]),
+    ) as ItemSchemas;
+  } catch {
+    return {};
+  }
+}

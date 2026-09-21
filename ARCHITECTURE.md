@@ -73,9 +73,11 @@ Every request resolves to an account, then a role, then permissions, at one enfo
 
 One decision covers every request. It takes the mutation's type, the acting account, and who owns the thing being changed, and returns allow or deny. A caller states only its payload.
 
-Ownership is an input to that decision, not a rule beside it. Something belonging to the acting account — their own queries, connections, and appearance — is allowed without reference to a level, and that falls out of the same call rather than bypassing it.
+The decision is built from predicates and guards, all in-process and pure. A predicate answers one question about a request — does this role hold this level, does this account own this entry. A guard pairs a predicate with the failure name its denial reports. One guard per mutation type sits in a table keyed by that type, which is what makes the scheme fail closed: a new member of the mutation union breaks the build until it declares a guard, so no mutation type can reach the store unchecked.
 
-Two roles ship by default: one that may write data, tiles, and integrations and read roles; one that may write data and read the rest — only the first can change a tile at all. A caller with no credential is denied outright — the dashboard is internet-facing, so there is no local-machine fallback identity to grant.
+Ownership is an input to that decision, not a rule beside it, and it only ever narrows. The level grants; ownership then gates which things that level reaches, restricting it to what belongs to the acting account — their own queries, connections, and appearance, and their own entries inside a tile's state. No level is skipped because something is owned. A level that reaches what others own — `write` on `data` — widens that gate back, so correcting someone else's entry stays possible for an account trusted with it. All of it falls out of the same call rather than bypassing it.
+
+Two roles ship by default: `editor`, which may write data, tiles, and integrations and read roles; and `contributor`, which may write data and read the rest — only `editor` can change a tile at all. A caller with no credential is denied outright — the dashboard is internet-facing, so there is no local-machine fallback identity to grant.
 
 Every caller is resolved to an account by the auth provider before the permission decision runs (see `CONTEXT.md`). This project's own provider is a fixed whitelist of credential-to-account mappings, standing in for the "complex, high-security service" a real deployment would use — swapping it later changes nothing downstream, since the permission decision only ever sees the resolved account. There is no in-app account-creation mutation; an account exists because the whitelist says so.
 
