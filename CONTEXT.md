@@ -80,13 +80,41 @@ A named bundle of permissions, assigned to an account. A role carries no credent
 
 Access is governed in four categories — `data`, `tiles`, `integrations`, `roles` — each holding `noAccess`, `read`, `edit`, or `write`, ranked so each level implies the ones below it. `edit` changes something that already exists; `write` also creates and destroys.
 
-One decision covers every request, taking the mutation's type, the acting account, and the target's owner. Something owned by the acting account needs no level, which falls out of that decision rather than sitting beside it as an exception.
+`tiles` governs a tile's own record — `add-tile`, `remove-tile`, `set-tile-title`, `place-tile` — with no ownership exception: a tile belongs to the dashboard, not to whoever added it, so changing one is gated purely on role, at the highest tier either default role reaches.
+
+`data` governs `set-tile-state` — the concrete values inside a tile, however they arrived (integration, agent, or manual entry) — and is where data ownership applies.
+
+One decision covers every request, taking the mutation's type, the acting account, and the target's owner. The level grants and ownership narrows: an account reaches only what its level permits, and ownership restricts that reach to what belongs to it. Ownership never stands in for a level. The narrowing falls out of that same decision rather than sitting beside it as an exception, and applies to data ownership (below), to a query, a connection, or an appearance setting, never to a tile's own record.
 
 Roles live in a file the source imports, not in dashboard configuration. Configuring them takes the same access as editing source code. No mutation reaches a role.
 
 ## Account
 
-The identity a caller presents. An account holds a credential reference and the name of the role assigned to it, and lives outside dashboard configuration.
+The identity a caller presents. An account holds a credential and the name of the role assigned to it, and lives outside dashboard configuration.
+
+An account is never created through a mutation. It exists because the auth provider says it exists — see below.
+
+A caller presenting no credential is denied, never granted a fallback identity.
+
+## Data ownership
+
+Who may delete or edit the content of one entry inside a tile's state, regardless of how that entry arrived — integration, agent, or manual entry.
+
+The owner is whichever account entered the value, or, when a query supplied it, the account that owns that query.
+
+Ownership never grants a permission. Every operation on an entry needs a level on `data` first; ownership then gates which entries that level reaches, narrowing it to the account's own. `write` on `data` widens that gate to every entry, which is how one account corrects what another entered. Adding a new entry needs `write` on `data`, like any other change that creates, and never touches another entry's fields or owner.
+
+Ownership names one added field on the entry itself, set once when it is added and never changed afterward. It does not extend to:
+
+- an entry's own interaction/status fields (e.g. a checklist item's checked state) — distinct from the entry's content, and open to anyone
+- the order entries appear in
+- a tile's placement — where it sits, how wide
+
+## Auth provider
+
+The boundary that turns a presented credential into an account. Swappable: a real deployment is expected to sit behind a proper authentication service: it decides who may register, issues credentials, and is the one place identity risk lives.
+
+This project's own implementation is a fixed whitelist — a file mapping each credential to an account and its role — standing in for that service. Swapping the whitelist for a real provider later changes nothing else in this project, since every caller was already reduced to "acting account" before the permission decision ever sees it.
 
 ## Project policy
 

@@ -2,7 +2,12 @@ import path from "node:path";
 
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
+import { loadEnvLocal } from "./scripts/load-env-local";
 import { APP_ROOT, workspaceDirectory } from "./src/workspace";
+
+// Same `.env.local` convention as `dev`/`mcp` (see scripts/load-env-local.ts),
+// so `vitest run` (which shares this config) sees a locally-set credential.
+loadEnvLocal(APP_ROOT);
 
 const workspace = workspaceDirectory();
 

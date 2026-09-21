@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { z } from "zod";
+import { stripEntryOwnership } from "@/auth/permissions";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tile } from "@/dashboard/types";
@@ -68,7 +69,10 @@ export function TileHost({ tile, items }: TileHostProps) {
     );
   }
 
-  const result = z.fromJSONSchema(item.meta.schema).safeParse(tile.state);
+  // Entry id and owner are stamped onto tile.state for data ownership (#135)
+  // and must never reach a registry item's declared schema or its component.
+  const state = stripEntryOwnership(tile.state);
+  const result = z.fromJSONSchema(item.meta.schema).safeParse(state);
   if (!result.success) {
     return (
       <Alert variant="destructive">
