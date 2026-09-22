@@ -324,14 +324,14 @@ const mayEditData = hasLevel("data", "edit");
 const mayWriteAnyData = hasLevel("data", "write");
 
 /**
- * The `data` category's guard. The level always grants and ownership only
- * ever narrows: a create needs `write` outright (there is no "adding needs
- * no level" exemption); an edit or a delete needs a level on `data`, and —
- * unless that level is `write`, which widens the gate back to every entry —
- * is narrowed to entries the acting account owns. An edit whose changed
- * fields are all marked `interactive` in the item's schema still needs that
- * same level on `data`, but skips the ownership narrowing entirely: the
- * marker lifts the ownership gate, never the level.
+ * The `data` category's guard. Two gates, and both must pass — neither the
+ * level nor ownership grants on its own. A create needs `write` outright
+ * (there is no "adding needs no level" exemption). An edit or a delete needs
+ * a level on `data` and ownership of the entry, except that `write` passes
+ * the ownership gate for every entry. An edit whose changed fields are all
+ * marked `interactive` in the item's schema still needs that same level on
+ * `data`, but its ownership gate always passes: the marker lifts the
+ * ownership gate, never the level.
  */
 const dataOwnershipGuard: Guard = (request) => {
   const { mutation, dashboard, account } = request;
@@ -356,7 +356,7 @@ const dataOwnershipGuard: Guard = (request) => {
     } else if (!mayEditData(request)) {
       return "forbidden";
     } else if (change.kind === "edit" && change.interactiveOnly) {
-      // Level already checked above; ownership never narrows an interactive field.
+      // Level already checked above; the ownership gate always passes here.
     } else if (!mayWriteAnyData(request) && change.owner !== account.id) {
       return "forbidden";
     }

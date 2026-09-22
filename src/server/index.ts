@@ -94,7 +94,7 @@ async function main() {
   // Registry rebuilds ride Vite's own watcher (chokidar) rather than a
   // second, independent `node:fs.watch()` on the same directory. A separate
   // native watch used to sit alongside Vite's — confirmed via
-  // `DEBUG=pw:webserver npm run test:e2e -- e2e/b3-new-tile.spec.ts`: Vite's
+  // `DEBUG=pw:webserver npm run test:e2e`: Vite's
   // own "page reload" HMR message for a newly-added registry file showed up
   // (eventually, ~90s late), but our watch's own "registry rebuilt" log
   // never fired for that same change — two watchers on one directory on

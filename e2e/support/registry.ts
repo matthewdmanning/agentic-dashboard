@@ -2,7 +2,7 @@ import { E2E_CONFIG, E2E_ORIGIN } from "../../playwright.config";
 
 /**
  * The dev server can legitimately 404 `/r/registry.json` for a moment after
- * boot (see b3-new-tile.spec.ts) — poll instead of a bare `page.goto`, which
+ * boot — poll instead of a bare `page.goto`, which
  * a webServer health check on a different path does not rule out.
  */
 export async function waitForRegistryReady(): Promise<void> {

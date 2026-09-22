@@ -22,12 +22,7 @@
     }
   },
   "tests": {
-    "discoverySearchTimeout": 60000,
-    "discoveryViewTimeout": 120000,
-    "discoveryMcpTimeout": 30000,
-    "newTileTimeout": 180000,
     "registryWaitTimeout": 90000,
-    "registryPollInterval": 500,
-    "layoutTolerancePx": 2
+    "registryPollInterval": 500
   }
 }

@@ -9,7 +9,7 @@
   },
   "decision records": {
     "terms": [],
-    "text": "No ADR directory -- this file is deliberately mutable and consolidated, not a set of immutable per-decision files. Decisions carry a stable id (`D1`-`D49`; a gap means a withdrawn decision, numbers never reused) and a `terms` tag array for topical lookup. Tags rather than a single key, since a decision usually relates to more than one term. Superseded reasoning is deleted in place; git holds what was thought before."
+    "text": "No ADR directory -- this file is deliberately mutable and consolidated, not a set of immutable per-decision files. Decisions carry a stable id (`D1`-`D51`; a gap means a withdrawn decision, numbers never reused) and a `terms` tag array for topical lookup. Tags rather than a single key, since a decision usually relates to more than one term. Superseded reasoning is deleted in place; git holds what was thought before."
   },
   "display-role key": {
     "terms": ["display-role key"],
@@ -130,5 +130,13 @@
   "D47": {
     "terms": ["connection", "account"],
     "text": "Credentials are referenced by name in `${NAME}` form, following shadcn's registry-authentication convention. Resolution takes the name and the acting account together: one dashboard holds many people's credentials for the same integration, and an environment variable has one value per process, so a name alone cannot tell them apart. That makes the seam real rather than hypothetical -- an in-memory adapter for tests, an encrypted source in use. The configuration holds a name, never a secret; the value comes from an encrypted source, and rotation belongs to that source. Rejected: storing sealed material here -- that is what forces a rotation schedule, per-secret key naming to avoid a flag day, and a swappable secret-box seam. Store none of it and none of that is needed. Multi-user follows from the server resolving a presented credential to an identity, which is the documented pattern, and needs no project-specific auth vocabulary."
+  },
+  "D50": {
+    "terms": ["account", "role"],
+    "text": "This project does not build authentication: no registration, no password storage, no account-creation mutation. An auth provider resolves each caller to an account, and is the only place identity risk lives. A real deployment puts a high-security authentication service behind that boundary. This project's own provider is a fixed whitelist file mapping each credential to an account and a role. To change an account, edit the file by hand. Rejected: building registration, credential rotation, or revocation in-app -- each would be a worse copy of the service this is meant to be swapped for. The permission decision sees only the resolved account, so the swap changes nothing downstream."
+  },
+  "D51": {
+    "terms": ["role", "mutation", "data ownership"],
+    "text": "A caller gets permission only when every gate passes. A mutation on `tiles` has one gate: the level the acting account's role holds on `tiles`. There is no ownership gate -- a tile belongs to the dashboard, not to the account that added it. A mutation on `data` has two gates: the level the account's role holds on `data`, and ownership of the entry. Both must pass. A level alone does not grant, and ownership alone does not grant. `write` on `data` passes the ownership gate for every entry, which is how one account corrects what another entered -- the gate still runs, and the level satisfies it. Rejected: letting ownership grant on its own, so that adding an entry needed no level and owning an entry was itself the permission to edit or delete it. That removes the level gate for some operations, opening a path to change shared state with no level check, and every new mutation type must then remember the exception. Two gates that always both run have no such path. Both default roles hold `write` on `data`, so today the ownership gate passes for every entry and never refuses anything. The gate is built anyway: defining any role below `write` on `data` makes it bite with no code change. Rejected: lowering a default role's level so the rule visibly bites -- that role could then no longer add entries at all, since `write` is the level that creates."
   }
 }
