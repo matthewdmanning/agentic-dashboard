@@ -26,13 +26,8 @@ export type E2EConfig = {
     };
   };
   readonly tests: {
-    readonly discoverySearchTimeout: number;
-    readonly discoveryViewTimeout: number;
-    readonly discoveryMcpTimeout: number;
-    readonly newTileTimeout: number;
     readonly registryWaitTimeout: number;
     readonly registryPollInterval: number;
-    readonly layoutTolerancePx: number;
   };
 };
 

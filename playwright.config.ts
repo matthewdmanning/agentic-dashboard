@@ -59,7 +59,6 @@ for (const entry of config.excludeFromWorkspace)
  */
 export const E2E_WORKSPACE = workspace;
 export const E2E_CONFIG = config;
-export const E2E_PORT = config.server.port;
 export const E2E_ORIGIN = `http://${config.server.host}:${config.server.port}`;
 
 export default defineConfig({
