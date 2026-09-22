@@ -18,4 +18,4 @@ What this blocks or costs while it stands.
 
 ## Notes
 
-Link the `ponytail:` comment, `TECH_DEBT.md` entry, or issue that raised it.
+Link the `ponytail:` comment or issue that raised it.

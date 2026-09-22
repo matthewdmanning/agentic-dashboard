@@ -19,7 +19,7 @@ labels: bug
 - [ ] Client (`src/client`)
 - [ ] Server / HTTP (`src/server`)
 - [ ] MCP server (`src/mcp`)
-- [ ] Card templates / registry
+- [ ] Registry items (`registry/`)
 - [ ] Dry run (`dry-run/`)
 - [ ] Skills / agent instructions
 - [ ] Docs
