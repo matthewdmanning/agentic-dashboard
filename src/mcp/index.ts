@@ -105,7 +105,6 @@ server.registerTool(
     const carried = scope && scope.length > 0 ? scope : ALL_CATEGORIES;
     const result = {
       carried,
-      // No roles or permissions exist yet, so nothing is ever actually withheld.
       withheld: [] as (typeof ALL_CATEGORIES)[number][],
       ...(carried.includes("tiles") ? { tiles: dashboard.tiles } : {}),
       ...(carried.includes("references")
