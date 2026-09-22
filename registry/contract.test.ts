@@ -92,7 +92,7 @@ const runTsc = (dir: string): { code: number; output: string } => {
   };
 };
 
-describe("registry contract: schema-derived props (B2 authoring)", () => {
+describe("registry contract: schema-derived props", () => {
   it("typechecks clean when a tile's schema and props agree, with realistic values", () => {
     const dir = writeFixture("agreement", {
       "schemas.local.ts": `
