@@ -1,7 +1,19 @@
-# Auth delegated to a swappable provider, mocked as a fixed whitelist
+# Auth delegated to a swappable provider
 
 **Status:** accepted
 
-Authentication is not built as an in-app feature (no registration, no password storage, no account-creation mutation). Instead, every caller is resolved to an account through an auth-provider boundary — the one place identity risk lives — which a real deployment would back with a proper high-security authentication service. This project's own implementation is a fixed whitelist file mapping a credential to an account and its role, standing in for that service.
+This project does not build authentication. It has no registration, no
+password storage, and no account-creation mutation.
 
-The trade-off: nothing here handles registration, credential rotation, or revocation beyond hand-editing the whitelist file. That is deliberate — building any of that would be building a worse version of the service this is meant to be swapped for later, and the permission decision downstream never needs to know the difference.
+An auth provider resolves each caller to an account. The auth provider is the
+only place identity risk lives. A real deployment puts a high-security
+authentication service behind this boundary.
+
+This project's auth provider is a fixed whitelist file. The file maps each
+credential to an account and a role.
+
+**Trade-off:** The whitelist does not do registration, credential rotation, or
+revocation. To change an account, edit the file by hand. This is deliberate.
+An in-app version would be a worse copy of the service that replaces it. The
+permission decision sees only the resolved account, so the replacement changes
+nothing downstream.

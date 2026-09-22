@@ -2,10 +2,33 @@
 
 **Status:** accepted
 
-A permission decision has two inputs that could each justify a mutation: the level the acting account's role holds on a category, and whether that account owns the thing being changed. Only the level grants. Ownership is applied on top of it and can only narrow — restricting the reach of a level the account already holds, to the entries it owns. No operation is permitted on ownership alone with no level consulted.
+A caller gets permission only when every gate passes.
 
-An earlier draft had it the other way: adding an entry needed no level at all, and owning an entry was itself the permission to edit or delete it. That reading puts ownership beside the permission scheme rather than inside it, so a path exists to change shared state without any level being checked — and every new mutation type has to remember the exception. Ownership as a gate has no such path, because there is nothing to remember: the level check always runs first.
+A mutation on `tiles` has one gate: the level the acting account's role holds
+on `tiles`. There is no ownership gate. A tile belongs to the dashboard, not
+to the account that added it.
 
-`write` on `data` reaches entries the account does not own, which is how one account corrects what another entered. That is a level widening its own reach, not ownership being overridden, so it composes with the rule rather than contradicting it.
+A mutation on `data` has two gates:
 
-The trade-off: both default roles hold `write` on `data`, so under the two roles that ship today the narrowing never fires and every account can edit every entry. The gate is built correctly anyway. Defining any role below `write` on `data` activates it with no code change, and the alternative — dropping a default role's level so the rule visibly bites — would have meant that role could no longer add entries at all, since `write` is the level that creates.
+- the level the account's role holds on `data`
+- ownership of the entry
+
+Both gates must pass. A level alone does not grant. Ownership alone does not
+grant.
+
+`write` on `data` passes the ownership gate for every entry. This is how one
+account corrects what another account entered. The gate still runs. The level
+satisfies it.
+
+**Rejected:** An earlier draft let ownership grant on its own. Adding an entry
+needed no level, and owning an entry was itself the permission to edit or
+delete it. That draft removes the level gate for some operations. It opens a
+path to change shared state with no level check. Every new mutation type must
+then remember the exception. Two gates that always both run have no such path.
+
+**Trade-off:** Both default roles hold `write` on `data`. Under the roles that
+ship today the ownership gate passes for every entry, so it never refuses
+anything. The gate is built anyway. Define any role below `write` on `data` to
+make it bite, with no code change. The alternative was to lower a default
+role's level. That role could then no longer add entries, because `write` is
+the level that creates.
