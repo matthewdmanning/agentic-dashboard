@@ -14,14 +14,14 @@ const workspace = workspaceDirectory();
 export default defineConfig({
   plugins: [tailwindcss()],
   publicDir: path.join(workspace, "public"),
-  // `e2e/` is Playwright's, and its specs throw when a second runner collects
+  // `tests/e2e/` is Playwright's, and its specs throw when a second runner collects
   // them. `.claude/` may hold a worktree checked out inside the repository,
   // whose stale test copies would run against current source. The seeded
   // workspace has no installed tooling of its own, so its copied test files
   // can't run either.
   test: {
     exclude: [
-      "e2e/**",
+      "tests/e2e/**",
       "node_modules/**",
       ".claude/**",
       `${path.relative(APP_ROOT, workspace)}/**`,

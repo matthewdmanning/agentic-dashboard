@@ -2,7 +2,7 @@ import { defineConfig } from "@playwright/test";
 import { cpSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import path from "node:path";
 
-import { loadE2EConfig } from "./e2e/support/config";
+import { loadE2EConfig } from "./tests/e2e/support/config";
 import { loadEnvLocal } from "./scripts/load-env-local";
 
 const REPO_ROOT = path.resolve(import.meta.dirname);
@@ -55,7 +55,7 @@ for (const entry of config.excludeFromWorkspace)
  *
  * The server is started against a unique throwaway workspace so a run never
  * touches `.dashboard/` — the developer's real dashboard data and their real
- * local-user token. Run settings live in `e2e/config.json`.
+ * local-user token. Run settings live in `tests/e2e/config.json`.
  */
 export const E2E_WORKSPACE = workspace;
 export const E2E_CONFIG = config;
@@ -65,10 +65,10 @@ export default defineConfig({
   testDir: config.playwright.testDirectory,
   // On the way out, proves the run never wrote back to the `dry-run/workspace/`
   // fixture this config already copied into the run's workspace above.
-  globalSetup: "./e2e/support/workspace.ts",
-  // One worker, one server, one workspace. B3 adds and removes a registry item
-  // while the server watches it, which would rewrite the registry underneath
-  // B1's discovery assertions if the two specs overlapped.
+  globalSetup: "./tests/e2e/support/workspace.ts",
+  // One worker, one server, one workspace. A spec that adds or removes a
+  // registry item while the server watches it would rewrite the registry
+  // underneath another spec's assertions if the two overlapped.
   fullyParallel: config.playwright.fullyParallel,
   workers: config.playwright.workers,
   use: { baseURL: E2E_ORIGIN, viewport: config.playwright.viewport },

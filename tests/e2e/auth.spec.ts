@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { connectMcpClient, type McpTestClient } from "./support/mcp-client";
-import { E2E_WORKSPACE } from "../playwright.config";
+import { E2E_WORKSPACE } from "../../playwright.config";
 
 /**
  * The MCP boundary's half of "no credential, no access" (#133): a caller

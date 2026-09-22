@@ -3,7 +3,7 @@ import { waitForRegistryReady } from "./support/registry";
 
 /**
  * Dark mode is reachable two ways and both have broken before: the palette
- * exists in `styles.css` but nothing ever set `.dark`, so the tokens were
+ * exists in `src/index.css` but nothing ever set `.dark`, so the tokens were
  * dead code. These check the class actually lands, that an explicit choice
  * survives a reload, and that with no choice stored the OS decides.
  */

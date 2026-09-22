@@ -16,9 +16,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "registry", "tests", "e2e", "playwright.config.ts"],
-  // Fixture component source destined for a seeded workspace, not this repo's
-  // own tree — it imports "./schemas.generated" and "./schema", which only
-  // exist once copied next to a workspace's own registry/.
-  "exclude": ["e2e/fixtures"]
+  "include": ["src", "registry", "tests", "playwright.config.ts"]
 }
