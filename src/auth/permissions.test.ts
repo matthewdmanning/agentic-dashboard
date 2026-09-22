@@ -14,6 +14,11 @@ import {
 } from "./permissions";
 import type { Account } from "./types";
 
+import { schemas } from "../../registry/schemas.generated";
+
+/** The schemas the registry actually ships, as `readItemSchemas` would hand them to the decision. */
+const SHIPPED_ITEM_SCHEMAS = schemas as unknown as ItemSchemas;
+
 const editor: Account = { id: "acct-editor", role: "editor" };
 const contributor: Account = { id: "acct-contributor", role: "contributor" };
 const unknownRole: Account = { id: "acct-ghost", role: "not-a-real-role" };
@@ -37,10 +42,10 @@ ROLES["no-data-access"] = {
   roles: "noAccess",
 };
 
-// A fixture item's schema, passed in with the request rather than written
-// as a real interactive field into registry.json: one array field whose
+// A fixture item's schema, passed in with the request: one array field whose
 // entries carry an ordinary content field (TEXT) and one marked interactive
-// (DONE), the same shape a checklist item's checked state would take.
+// (DONE). It keeps the general cases independent of any one shipped item;
+// the shipped `checklist-tile` marker is covered separately at the end.
 const ITEM_SCHEMAS: ItemSchemas = {
   "fixture-interactive-item": {
     type: "object",
@@ -471,6 +476,58 @@ describe("checkMutationPermission", () => {
           }),
           account: dataEditor,
           dashboard,
+        }),
+      ).toBe("forbidden");
+    });
+  });
+  // The general cases above use a fixture schema. This one uses the schema
+  // the registry actually ships, so dropping `"interactive": true` from
+  // `checklist-tile`'s CHECKED property in registry.json fails here — the
+  // marker is one keyword, and without a check it can go missing silently.
+  describe("the shipped checklist-tile's CHECKED marker", () => {
+    const checklistDashboard = (entry: Record<string, unknown>): Dashboard => ({
+      tiles: [
+        {
+          id: "t",
+          title: "t",
+          item: "checklist-tile",
+          state: { CHECKLIST_TITLE: "Reading queue", CHECKLIST_ITEMS: [entry] },
+        },
+      ],
+      references: [{ tileId: "t", size: "md" }],
+    });
+
+    const checklistMutation = (entry: Record<string, unknown>): Mutation =>
+      setTileState({
+        CHECKLIST_TITLE: "Reading queue",
+        CHECKLIST_ITEMS: [entry],
+      });
+
+    const owned = {
+      entryId: "e1",
+      owner: "someone-else",
+      LABEL: "Read the spec",
+      CHECKED: false,
+    };
+
+    it("lets any account with a level on data check off an entry it does not own", () => {
+      expect(
+        checkMutationPermission({
+          itemSchemas: SHIPPED_ITEM_SCHEMAS,
+          mutation: checklistMutation({ ...owned, CHECKED: true }),
+          account: dataEditor,
+          dashboard: checklistDashboard(owned),
+        }),
+      ).toBeNull();
+    });
+
+    it("still refuses that account editing the same entry's LABEL", () => {
+      expect(
+        checkMutationPermission({
+          itemSchemas: SHIPPED_ITEM_SCHEMAS,
+          mutation: checklistMutation({ ...owned, LABEL: "Rewritten" }),
+          account: dataEditor,
+          dashboard: checklistDashboard(owned),
         }),
       ).toBe("forbidden");
     });

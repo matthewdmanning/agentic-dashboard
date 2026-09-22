@@ -96,7 +96,8 @@
                   },
                   "CHECKED": {
                     "type": "boolean",
-                    "default": false
+                    "default": false,
+                    "interactive": true
                   }
                 },
                 "required": ["LABEL", "CHECKED"],
@@ -105,54 +106,6 @@
             }
           },
           "required": ["CHECKLIST_TITLE", "CHECKLIST_ITEMS"],
-          "additionalProperties": false
-        }
-      }
-    },
-    {
-      "name": "eisenhower-matrix-tile",
-      "type": "registry:block",
-      "title": "Eisenhower Matrix Tile",
-      "description": "Displays tasks across the four Eisenhower matrix quadrants.",
-      "registryDependencies": ["card"],
-      "files": [
-        {
-          "path": "registry/eisenhower-matrix-tile.tsx",
-          "type": "registry:component"
-        }
-      ],
-      "meta": {
-        "schema": {
-          "type": "object",
-          "properties": {
-            "MATRIX_TITLE": {
-              "type": "string",
-              "default": ""
-            },
-            "MATRIX_ITEMS": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "task": {
-                    "type": "string",
-                    "default": ""
-                  },
-                  "urgency": {
-                    "type": "string",
-                    "enum": ["High", "Low"]
-                  },
-                  "importance": {
-                    "type": "string",
-                    "enum": ["High", "Low"]
-                  }
-                },
-                "required": ["task", "urgency", "importance"],
-                "additionalProperties": false
-              }
-            }
-          },
-          "required": ["MATRIX_TITLE", "MATRIX_ITEMS"],
           "additionalProperties": false
         }
       }

@@ -56,7 +56,8 @@ export const schemas = {
             },
             "CHECKED": {
               "type": "boolean",
-              "default": false
+              "default": false,
+              "interactive": true
             }
           },
           "required": [
@@ -70,52 +71,6 @@ export const schemas = {
     "required": [
       "CHECKLIST_TITLE",
       "CHECKLIST_ITEMS"
-    ],
-    "additionalProperties": false
-  },
-  "eisenhower-matrix-tile": {
-    "type": "object",
-    "properties": {
-      "MATRIX_TITLE": {
-        "type": "string",
-        "default": ""
-      },
-      "MATRIX_ITEMS": {
-        "type": "array",
-        "items": {
-          "type": "object",
-          "properties": {
-            "task": {
-              "type": "string",
-              "default": ""
-            },
-            "urgency": {
-              "type": "string",
-              "enum": [
-                "High",
-                "Low"
-              ]
-            },
-            "importance": {
-              "type": "string",
-              "enum": [
-                "High",
-                "Low"
-              ]
-            }
-          },
-          "required": [
-            "task",
-            "urgency",
-            "importance"
-          ],
-          "additionalProperties": false
-        }
-      }
-    },
-    "required": [
-      "MATRIX_TITLE",
-      "MATRIX_ITEMS"
     ],
     "additionalProperties": false
   }
