@@ -84,8 +84,6 @@ Access is governed in four categories — `data`, `tiles`, `integrations`, `role
 
 `data` governs `set-tile-state` — the concrete values inside a tile, however they arrived (integration, agent, or manual entry) — and is where data ownership applies.
 
-One decision covers every request, taking the mutation's type, the acting account, and the target's owner. A request is permitted only when every gate that applies to it passes. A mutation on `tiles` has one gate: the level. A mutation on `data` has two: the level, and ownership of the entry. Neither gate grants on its own. The second gate applies to data ownership (below), to a query, a connection, or an appearance setting, never to a tile's own record. Both gates fall out of that same decision rather than sitting beside it as an exception.
-
 Roles live in a file the source imports, not in dashboard configuration. Configuring them takes the same access as editing source code. No mutation reaches a role.
 
 ## Account
@@ -102,7 +100,7 @@ Who may delete or edit the content of one entry inside a tile's state, regardles
 
 The owner is whichever account entered the value, or, when a query supplied it, the account that owns that query.
 
-Ownership is a gate, not a grant. Every operation on an entry passes two gates: the account's level on `data`, and ownership of that entry. A level alone does not permit an operation, and ownership alone does not either. `write` on `data` passes the ownership gate for every entry, which is how one account corrects what another entered. Adding a new entry needs `write` on `data`, like any other change that creates, and never touches another entry's fields or owner.
+Ownership is a gate, not a grant: how it combines with the account's level on `data` is in `ARCHITECTURE.md`. Adding a new entry never touches another entry's fields or owner.
 
 Ownership names one added field on the entry itself, set once when it is added and never changed afterward. It does not extend to:
 

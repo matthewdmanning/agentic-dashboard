@@ -14,7 +14,7 @@ anything load-bearing against the real thing before relying on it.
 
 **Its vocabulary is retired.** This document says "card", "card template",
 "font scaling", and "agent permissions configured in Settings". None of those
-are project terms any more — see `CONTEXT.md`, and `REBUILD-NOTES.md` for the
+are project terms any more — see `CONTEXT.md` for the
 renames. Read the goals here; take no word from here.
 
 Draft product specification: what the product must do. Items without a decision are explicitly marked **Open**.
