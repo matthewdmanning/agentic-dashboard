@@ -63,9 +63,9 @@ array-shaped state value, or the whole state for a tile with no array).
 Editing or deleting an entry you do not own is refused unless your account
 holds write on data; adding a new entry, reordering entries, and changing a
 tile's placement never need ownership of anything, but still need a level on
-data or tiles as above. Ownership only ever narrows which entries your level
-reaches — it never grants an operation on its own, so an account with no
-level on data is refused even for an entry it owns.
+data or tiles as above. A level and ownership are two gates, and both must
+pass — neither grants on its own, so an account with no level on data is
+refused even for an entry it owns.
 
 Mark a field as interactive by adding "interactive": true directly on that
 field's own definition in meta.schema (e.g. a checklist item's CHECKED
