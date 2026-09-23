@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { loadE2EConfig } from "./config";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 
 /**
  * `dry-run/workspace/` is the committed starting state. Each test run gets a

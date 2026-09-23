@@ -1,8 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
-const CONFIG_PATH = path.join(REPO_ROOT, "e2e", "config.json");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
+const CONFIG_PATH = path.join(REPO_ROOT, "tests", "e2e", "config.json");
 
 export type E2EConfig = {
   readonly fixtureDirectory: string;

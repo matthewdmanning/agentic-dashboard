@@ -150,7 +150,7 @@ mid-edit signal before the full run.
 
 - Do not write, edit, or create any file in this repository outside the
   dashboard MCP's own writable workspace (for authoring a new tile item).
-  Never write to this repo's own `scripts/`, `src/`, or `e2e/` — those are
+  Never write to this repo's own `scripts/`, `src/`, or `tests/` — those are
   the project's own source, not tile output.
 - Do not create, remove, resize, or restate any tile other than the one
   requested or, per Step 2, an existing tile you've judged already serves

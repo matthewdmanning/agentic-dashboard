@@ -13,7 +13,7 @@ import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
 import { expect, test } from "@playwright/test";
 
-import { killProcessTree } from "../dry-run/kill-process-tree";
+import { killProcessTree } from "../../dry-run/kill-process-tree";
 
 /**
  * The dry run is the surface an agent attaches to, and more than one of them
@@ -26,7 +26,7 @@ import { killProcessTree } from "../dry-run/kill-process-tree";
  * this shares nothing with the rest of the suite but the repository.
  */
 
-const REPO_ROOT = path.resolve(import.meta.dirname, "..");
+const REPO_ROOT = path.resolve(import.meta.dirname, "../..");
 const TSX_CLI = path.join(REPO_ROOT, "node_modules", "tsx", "dist", "cli.mjs");
 const RUNNER = path.join(REPO_ROOT, "dry-run", "runner.ts");
 const config = JSON.parse(

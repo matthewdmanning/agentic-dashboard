@@ -26,13 +26,12 @@ installed-themes/
 Thumbs.db
 .agents
 .codex/
-.codex-tmp/
 
 # End-to-end run artifacts. `screenshots/` is kept out of Playwright's
 # `test-results/`, which Playwright wipes at the start of every run.
 screenshots/
 .e2e-workspace*/
-.dry-run/
+tests/.dry-runs/
 test-results/
 playwright-report/
 

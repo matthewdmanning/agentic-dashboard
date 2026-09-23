@@ -1,4 +1,4 @@
-import { E2E_CONFIG, E2E_ORIGIN } from "../../playwright.config";
+import { E2E_CONFIG, E2E_ORIGIN } from "../../../playwright.config";
 
 /**
  * The dev server can legitimately 404 `/r/registry.json` for a moment after

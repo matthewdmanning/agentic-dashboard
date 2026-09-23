@@ -16,7 +16,7 @@ Those are the same files under two different rules, and the rule follows from ho
 
 **Testing never touches it.** The E2E harness creates a new uniquely named workspace for each run, copies this directory into it before the first spec, and points both the dashboard and MCP server at that copy. Every mutation lands there. After the last spec, the original fixture is hashed and compared against the hash taken before the run, then the temporary workspace is removed; a mismatch fails the run.
 
-Dry-run runtime settings live in `dry-run/config.json`: the fixture, the working folder, the base port the runner scans from, and the two entrypoints. E2E run settings remain separate in `e2e/config.json`.
+Dry-run runtime settings live in `dry-run/config.json`: the fixture, the working folder, the base port the runner scans from, and the two entrypoints. E2E run settings remain separate in `tests/e2e/config.json`.
 
 **Development edits the generated copy.** Each dry run copies this seed into its own folder under `.codex-tmp/dry-runs/`, so several runs can be up at once without meeting; a tile an agent adds persists in that run's folder and can still be read there after the run ends. Nothing under `.codex-tmp/dry-runs/` is deleted automatically.
 
