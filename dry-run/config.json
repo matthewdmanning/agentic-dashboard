@@ -1,6 +1,6 @@
 {
   "fixtureDirectory": "dry-run/workspace",
-  "workingDirectory": "tests/.dry-runs",
+  "workingDirectory": "test-results/dry-runs",
   "workingFolderPrefix": "workspace-",
   "runFile": "run.json",
   "excludeFromWorkspace": ["README.md"],

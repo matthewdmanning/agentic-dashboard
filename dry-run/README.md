@@ -48,11 +48,11 @@ has nobody to answer a prompt.
 ## Workspaces
 
 `npm run dry-run` copies `workspace/` into a new folder under
-`.codex-tmp/dry-runs/` and
+`test-results/dry-runs/` and
 writes a `run.json` beside the dashboard state naming the port it is serving
 on. When the server stops, that record goes and the folder stays.
 
-Nothing under `.codex-tmp/dry-runs/` is ever deleted automatically. A folder from a
+Nothing under `test-results/dry-runs/` is ever deleted automatically. A folder from a
 finished or crashed run holds that run's dashboard, and another run may still
 be using it, so old folders are yours to delete; the runner only warns once
 they pile up. A `run.json` pointing at a port nobody answers is ignored rather
