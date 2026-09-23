@@ -63,7 +63,7 @@ and how far to scan from it, and the two entrypoints.
 
 ## What the dry run does not carry
 
-The registry (`registry.json`, `src/registry/`), the shadcn project config
+The registry (`registry.json`, `registry/`), the shadcn project config
 (`components.json`), and the theme (`src/index.css`) are the application, not
 the run, and are read from the repository root. A working folder holds only
 the dashboard's own state. Editing a copy of one of those files inside a

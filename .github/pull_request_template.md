@@ -30,11 +30,10 @@ Closes #
 ### Affected areas
 
 - [ ] Client (`src/client`)
-- [ ] Service (`src/service`)
+- [ ] Dashboard store (`src/dashboard`)
 - [ ] Server / HTTP adapter (`src/server`)
 - [ ] MCP server (`src/mcp`)
-- [ ] Contract / schemas (`src/contract`)
-- [ ] Card templates (`src/card-templates`)
+- [ ] Registry items and schemas (`registry/`)
 - [ ] Auth / roles (`src/auth`)
 - [ ] Integrations / connections
 - [ ] Appearance / theming

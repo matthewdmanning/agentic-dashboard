@@ -17,7 +17,7 @@ name, mapping each `files.path` to `registry/`.
 {
   "$schema": "https://ui.shadcn.com/schema/registry.json",
   "name": "agentic-dashboard",
-  "homepage": "http://localhost:3000",
+  "homepage": "https://github.com/matthewdmanning/agentic-dashboard",
   "items": [
     {
       "name": "custom-card",
@@ -29,7 +29,7 @@ name, mapping each `files.path` to `registry/`.
       "files": [
         {
           "path": "registry/custom-card.tsx",
-          "type": "registry:block"
+          "type": "registry:component"
         }
       ]
     }
@@ -45,14 +45,14 @@ the local `@dashboard` namespace.
 ```json
 {
   "aliases": {
-    "components": "@/components",
-    "ui": "@/components/ui",
+    "components": "@components",
+    "ui": "@components/ui",
     "utils": "@/lib/utils",
     "blocks": "@/registry"
   },
   "registries": {
     "@base": "https://base-registry.com/r/{name}.json",
-    "@dashboard": "http://localhost:3000/r/{name}.json"
+    "@dashboard": "./public/r/{name}.json"
   }
 }
 ```
